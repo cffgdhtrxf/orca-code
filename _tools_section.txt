@@ -1,0 +1,545 @@
+TOOLS: List[Dict[str, Any]] = [
+    # ---- 核心工具 ----
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_command",
+            "description": "Run a shell command and return output",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "要执行的命令"},
+                    "working_dir": {"type": "string", "description": "工作目录，默认为当前目录"}
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read file (auto-detect encoding)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "文件绝对路径"}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Create/overwrite file. Python/script files go to output/ dir; text/data files also go to output/. Temp/test scratch files use temp/ prefix.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path. Relative paths go to output/ folder. Use output/script.py for code."},
+                    "content": {"type": "string", "description": "要写入的内容"}
+                },
+                "required": ["path", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List files and subdirectories",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "目录绝对路径，默认为当前目录"}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_files",
+            "description": "Search files by glob pattern",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "glob 模式，如 **/*.py"},
+                    "directory": {"type": "string", "description": "搜索起始目录，默认为当前目录"}
+                },
+                "required": ["pattern"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_content",
+            "description": "Search text in files",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "搜索文本或正则"},
+                    "directory": {"type": "string", "description": "搜索目录，默认为当前目录"},
+                    "file_filter": {"type": "string", "description": "文件名过滤，如 *.py"}
+                },
+                "required": ["pattern"]
+            }
+        }
+    },
+    # ---- 办公工具 (F6, F7) ----
+    {
+        "type": "function",
+        "function": {
+            "name": "read_excel",
+            "description": "Read Excel file, optional sheet name",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Excel 文件绝对路径"},
+                    "sheet_name": {"type": "string", "description": "工作表名称，默认第一个"}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_excel",
+            "description": "Write Excel file from JSON data",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Excel 文件绝对路径"},
+                    "data": {"type": "string", "description": "JSON 格式数据"},
+                    "sheet_name": {"type": "string", "description": "工作表名称，默认 Sheet1"}
+                },
+                "required": ["path", "data"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_word",
+            "description": "Extract text from Word document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Word 文件绝对路径"}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_word",
+            "description": "Create Word document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Word 文件绝对路径"},
+                    "content": {"type": "string", "description": "文档纯文本内容"},
+                    "title": {"type": "string", "description": "文档标题（可选）"}
+                },
+                "required": ["path", "content"]
+            }
+        }
+    },
+    # ---- 截图 & OCR (F8, F9) ----
+    {
+        "type": "function",
+        "function": {
+            "name": "take_screenshot",
+            "description": "Take screenshot (fullscreen or by window)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "window_title": {"type": "string", "description": "窗口标题关键字，为空则全屏"},
+                    "save_path": {"type": "string", "description": "保存路径，默认 temp/screenshot.png"}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ocr_image",
+            "description": "OCR image to extract Chinese/English text",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "图片文件绝对路径"}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    # ---- 网络 & 位置 ----
+    {
+        "type": "function",
+        "function": {
+            "name": "web_fetch",
+            "description": "Fetch raw web page content",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL"}
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_webpage",
+            "description": "Extract readable text from web page",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "网页 URL"}
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Query weather by city (via wttr.in); call get_location first",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "城市名（中文或英文），如 北京/Shanghai"}
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_location",
+            "description": "Get current location via Windows Location API (GPS/WiFi). Use this to find the user's city — do NOT try execute_command or web_fetch for location. Call this first before get_weather.",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Web search; use topic=news, days=3 for news",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "搜索关键词"},
+                    "topic": {"type": "string", "description": "news 或 general，默认 general"},
+                    "days": {"type": "integer", "description": "只搜最近N天，查新闻时建议3-7"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    # ---- F25: 技能系统 ----
+    {
+        "type": "function",
+        "function": {
+            "name": "load_skill",
+            "description": "Load a skill script from skills/",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "技能文件名（不含 .py）"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_skill",
+            "description": "Create a new skill script",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "技能文件名（不含 .py）"},
+                    "code": {"type": "string", "description": "完整 Python 代码"}
+                },
+                "required": ["name", "code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_skill",
+            "description": "Edit a skill script",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "技能文件名（不含 .py）"},
+                    "code": {"type": "string", "description": "新的完整 Python 代码"}
+                },
+                "required": ["name", "code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_skills",
+            "description": "List all skill scripts (.py and .md)",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "load_md_skill",
+            "description": "Load a .md behavioral skill (SKILL.md format) that guides your thinking and interaction protocol",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "技能文件名（不含 .md）"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_md_skills",
+            "description": "List all available .md behavioral skills with their triggers",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    # ---- F26: 定时任务 ----
+    {
+        "type": "function",
+        "function": {
+            "name": "add_task",
+            "description": "Add scheduled task (interval or cron)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "任务名称"},
+                    "mode": {"type": "string", "description": "interval 或 cron"},
+                    "schedule": {"type": "string", "description": "interval 时为秒数，cron 时为 '分 时 日 月 周'"},
+                    "action": {"type": "string", "description": "execute_command / web_search / ai_review"},
+                    "params": {"type": "string", "description": "JSON 格式的参数"}
+                },
+                "required": ["name", "mode", "schedule", "action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tasks",
+            "description": "List all scheduled tasks",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_task",
+            "description": "Remove a scheduled task by name",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "任务名称"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    # ---- F27: GUI 自动化（需二次确认） ----
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_click",
+            "description": "Click at screen coords (needs GUI auto)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "X 坐标"},
+                    "y": {"type": "integer", "description": "Y 坐标"},
+                    "button": {"type": "string", "description": "left / right / middle，默认 left"},
+                    "clicks": {"type": "integer", "description": "点击次数，默认 1"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_type",
+            "description": "Type text at focus (needs GUI auto)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "要输入的文本"},
+                    "interval": {"type": "number", "description": "每个字符间隔秒数，默认 0.01"}
+                },
+                "required": ["text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gui_move",
+            "description": "Move mouse to screen coords",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "X 坐标"},
+                    "y": {"type": "integer", "description": "Y 坐标"},
+                    "duration": {"type": "number", "description": "移动耗时秒数，默认 0.5"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    },
+    # ---- F28: 浏览器自动化 ----
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_open",
+            "description": "Open browser to URL (needs browser auto)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "要访问的 URL"},
+                    "headless": {"type": "boolean", "description": "是否无头模式，默认 false"}
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_click",
+            "description": "Click element by CSS selector",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS 选择器"}
+                },
+                "required": ["selector"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_type",
+            "description": "Type text into input field",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS 选择器"},
+                    "text": {"type": "string", "description": "要输入的文本"}
+                },
+                "required": ["selector", "text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_screenshot",
+            "description": "Screenshot browser page",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "output_path": {"type": "string", "description": "保存路径，默认 temp/browser_screenshot.png"}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_close",
+            "description": "Close browser, clean temp profile",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    # ---- System Info (C11) ----
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_info",
+            "description": "Get system hardware and runtime info",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {"type": "function", "function": {"name": "git_status", "description": "Git status", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "git_diff", "description": "Git diff", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}, "staged": {"type": "boolean"}}, "required": []}}},
+    {"type": "function", "function": {"name": "git_log", "description": "Git log", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}, "max_count": {"type": "integer"}}, "required": []}}},
+    {"type": "function", "function": {"name": "git_blame", "description": "Git blame", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}, "file": {"type": "string"}}, "required": ["file"]}}},
+    {"type": "function", "function": {"name": "go_to_definition", "description": "Find symbol definition", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}, "symbol": {"type": "string"}}, "required": ["file_path"]}}},
+    {"type": "function", "function": {"name": "find_references", "description": "Find symbol references", "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}, "directory": {"type": "string"}, "file_filter": {"type": "string"}}, "required": ["symbol"]}}},
+    {"type": "function", "function": {"name": "analyze_image", "description": "Analyze image content", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}, "question": {"type": "string"}}, "required": ["image_path"]}}},
+    {"type": "function", "function": {"name": "capture_camera", "description": "Capture camera frame and analyze", "parameters": {"type": "object", "properties": {"camera_index": {"type": "integer"}, "question": {"type": "string"}}, "required": []}}},
+    # ---- Python REPL ----
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_python",
+            "description": "Execute Python code in a persistent REPL session. Variables persist across calls. Use for calculations, data analysis, or testing logic. Call with '__reset__' to clear session, '__info__' to check status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Python code to execute"},
+                    "timeout": {"type": "integer", "description": "Max execution time in seconds, default 30"}
+                },
+                "required": ["code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_conversation",
+            "description": "Search past conversation history. Use when the user asks about earlier topics, past decisions, or needs context from previous sessions. Returns relevant conversation snippets with timestamps.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search keywords or question"},
+                    "limit": {"type": "integer", "description": "Max results, default 5 (1-20)"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_profile",
+            "description": "Add a note to the evolving user profile. Use when you learn about the user's preferences, coding style, projects, tools, language preference, or answer format preference. The profile persists across sessions and is injected into the system prompt.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "note": {"type": "string", "description": "What you learned about the user, e.g. 'prefers concise answers', 'works on a Python web project', 'uses VS Code', 'wants Chinese replies'"}
+                },
+                "required": ["note"]
+            }
+        }
+    },
+]

@@ -1,0 +1,46 @@
+{
+  "//": "复制此文件为 config.json 并填入你的 API 密钥。Copy this to config.json and fill in your keys.",
+
+  "// ======== 核心设置 ========": "",
+  "api_key": "sk-your-deepseek-api-key",
+  "base_url": "https://api.deepseek.com",
+  "model_name": "deepseek-chat",
+  "local_model": false,
+
+  "// ======== 视觉模型 ========": "",
+  "vision_model": "",
+  "vision_base_url": "",
+  "vision_api_key": "",
+
+  "// ======== 记忆系统 ========": "",
+  "memory_model": "",
+  "memory_base_url": "",
+  "memory_api_key": "",
+
+  "// ======== 输出控制 ========": "",
+  "max_output_tokens": 8192,
+  "enable_think_mode": true,
+  "reasoning_effort": "high",
+
+  "// ======== 工具开关 ========": "",
+  "enable_gui_auto": false,
+  "enable_browser_auto": false,
+  "enable_tts": true,
+  "enable_voice": true,
+  "silent_cmd": true,
+
+  "// ======== 上下文 & 性能 ========": "",
+  "context_max_tokens": 100000,
+  "keep_blocks": 0,
+  "max_workers": 5,
+  "cmd_timeout": 120,
+
+  "// ======== 搜索 & 位置 ========": "",
+  "tavily_api_key": "",
+  "user_city": "",
+
+  "// ======== 个性化 ========": "",
+  "persona": "",
+  "preferred_shell": "",
+  "auto_install_deps": true
+}

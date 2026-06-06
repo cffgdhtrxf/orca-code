@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache
+.cache/
+
+# Config (contains API keys — use config.example.json as template)
+config.json
+config.local.json
+
+# Models (large binary files)
+models/
+sherpa_onnx_models/
+vosk_models/
+
+# User data & logs
+save/
+logs/
+output/
+temp/
+
+# Memory database
+memory/memories.db
+memory/memories.db-shm
+memory/memories.db-wal
+
+# Backup files
+*.bak
+*.orig
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

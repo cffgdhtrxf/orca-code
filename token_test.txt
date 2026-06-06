@@ -1,0 +1,6 @@
+Tokenizer available: True
+cn_short: 1 tokens (16 chars)
+en_short: 9 tokens (31 chars)
+cn_search: 0 tokens (9 chars)
+json_msg: 11 tokens (50 chars)
+image_msg (cleaned): 23 +200 = 223 tokens (raw 50101 chars)

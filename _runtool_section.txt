@@ -1,0 +1,10 @@
+
+def run_tool(name, args):
+    func = TOOL_MAP.get(name)
+    if func is None:
+        return f"Error: unknown tool - {name}"
+    sig = inspect.signature(func)
+    valid = {k: v for k, v in args.items() if k in sig.parameters}
+    return func(**valid)
+
+# ============================================================
