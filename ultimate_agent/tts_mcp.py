@@ -11,17 +11,17 @@ from ultimate_agent.config import (CONFIG, HAS_TTS, HAS_BERT_VITS2,
 init_speech_recognition = None
 speech_to_text = None
 try:
-    from speech_recognition_hybrid import init_speech_recognition as _init_sp, speech_to_text as _stt
+    from _speech_recognition_hybrid import init_speech_recognition as _init_sp, speech_to_text as _stt
     HAS_SPEECH_RECOGNITION = True
     SPEECH_BACKEND = "hybrid"
 except ImportError:
     try:
-        from speech_recognition_vosk import init_speech_recognition as _init_sp, speech_to_text as _stt
+        from _speech_recognition_vosk import init_speech_recognition as _init_sp, speech_to_text as _stt
         HAS_SPEECH_RECOGNITION = True
         SPEECH_BACKEND = "vosk"
     except ImportError:
         try:
-            from speech_recognition_whisper import init_speech_recognition as _init_sp, speech_to_text as _stt
+            from _speech_recognition_whisper import init_speech_recognition as _init_sp, speech_to_text as _stt
             HAS_SPEECH_RECOGNITION = True
             SPEECH_BACKEND = "whisper"
         except ImportError:

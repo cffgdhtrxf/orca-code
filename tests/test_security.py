@@ -270,14 +270,14 @@ class TestMemoryManager:
 
     def test_fts5_escape_wraps_query(self):
         """_escape_fts5 should wrap query in double-quotes for exact phrase match."""
-        from memory_manager import MemoryManager
+        from _memory_manager import MemoryManager
         escaped = MemoryManager._escape_fts5('test" OR 1=1 --')
         assert escaped.startswith('"'), f"Should start with quote: {escaped}"
         assert escaped.endswith('"'), f"Should end with quote: {escaped}"
 
     def test_fts5_escape_doubles_quotes(self):
         """Double-quotes in FTS5 query should be escaped by doubling."""
-        from memory_manager import MemoryManager
+        from _memory_manager import MemoryManager
         escaped = MemoryManager._escape_fts5('hello "world"')
         assert '""' in escaped  # embedded quotes doubled
 

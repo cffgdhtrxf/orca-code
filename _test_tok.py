@@ -1,6 +1,6 @@
 import sys
 sys.path.insert(0, ".")
-from token_counter import count, has_tokenizer
+from _token_counter import count, has_tokenizer
 print(f"Tokenizer: {has_tokenizer()}")
 t = "你好，帮我写一个Python脚本"
 print(f"{repr(t)}: {count(t)} tokens")

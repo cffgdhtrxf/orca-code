@@ -65,7 +65,7 @@ def _estimate_tokens(text: str) -> int:
         return 0
     if IS_DEEPSEEK:
         try:
-            from token_counter import count
+            from _token_counter import count
             return count(text)
         except ImportError:
             pass  # fall through to heuristic

@@ -46,11 +46,11 @@ from ultimate_agent.utils import (_msg_tokens, _estimate_tokens,
     cleanup_temp_files, resolve_tool_path)
 
 try:
-    from memory_manager import MemoryManager
+    from _memory_manager import MemoryManager
 except ImportError:
     MemoryManager = None
 try:
-    from python_repl import execute_python
+    from _python_repl import execute_python
     HAS_PYTHON_REPL = True
 except ImportError:
     HAS_PYTHON_REPL = False

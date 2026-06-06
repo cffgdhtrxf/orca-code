@@ -46,17 +46,17 @@ console = Console()
 
 # ---- C版: 语音识别导入 (三级降级) ----
 try:
-    from speech_recognition_hybrid import init_speech_recognition, speech_to_text
+    from _speech_recognition_hybrid import init_speech_recognition, speech_to_text
     HAS_SPEECH_RECOGNITION = True
     SPEECH_BACKEND = "hybrid"
 except ImportError:
     try:
-        from speech_recognition_vosk import init_speech_recognition, speech_to_text
+        from _speech_recognition_vosk import init_speech_recognition, speech_to_text
         HAS_SPEECH_RECOGNITION = True
         SPEECH_BACKEND = "vosk"
     except ImportError:
         try:
-            from speech_recognition_whisper import init_speech_recognition, speech_to_text
+            from _speech_recognition_whisper import init_speech_recognition, speech_to_text
             HAS_SPEECH_RECOGNITION = True
             SPEECH_BACKEND = "whisper"
         except ImportError:
@@ -425,7 +425,7 @@ HTTP_SESSION.headers.update({
 
 # ---- Memory System ----
 try:
-    from memory_manager import MemoryManager
+    from _memory_manager import MemoryManager
     mem_mgr = MemoryManager(MEMORY_DIR / "memories.db")
     HAS_MEMORY = True
 except ImportError:
@@ -434,12 +434,12 @@ except ImportError:
 
 # ---- Python REPL ----
 try:
-    from python_repl import execute_python
+    from _python_repl import execute_python
     HAS_PYTHON_REPL = True
 except ImportError:
     HAS_PYTHON_REPL = False
     def execute_python(code: str, timeout: int = 30) -> str:
-        return "Error: python_repl module not available"
+        return "Error: _python_repl module not available"
 
 # ============================================================
 # 4. 依赖管理 (B版 ensure_pkg 风格)
