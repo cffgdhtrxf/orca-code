@@ -146,3 +146,112 @@ class TestAutoDetect:
     def test_detect_default(self):
         result = autodetect_provider("https://unknown.api.com", "unknown-model")
         assert result == "openai_compat"
+
+
+class TestDeepSeekThinkingMode:
+    """Verify DeepSeek thinking mode request building."""
+
+    def test_thinking_enabled_injects_extra_body(self):
+        adapter = DeepSeekAdapter()
+        input_data = StreamRequestInput(
+            base_url="https://api.deepseek.com",
+            api_key="sk-test",
+            model_id="deepseek-chat",
+            messages=[{"role": "user", "content": "Hello"}],
+            thinking_enabled=True,
+            reasoning_effort="high",
+        )
+        req = adapter.build_stream_request(input_data)
+        body = json.loads(req.body)
+        assert "thinking" in body
+        assert body["thinking"]["type"] == "enabled"
+        assert "stream_options" in body
+        assert body["stream_options"]["include_usage"] is True
+
+    def test_thinking_skipped_for_reasoner_model(self):
+        adapter = DeepSeekAdapter()
+        input_data = StreamRequestInput(
+            base_url="https://api.deepseek.com",
+            api_key="sk-test",
+            model_id="deepseek-reasoner",
+            messages=[{"role": "user", "content": "Hello"}],
+            thinking_enabled=True,
+        )
+        req = adapter.build_stream_request(input_data)
+        body = json.loads(req.body)
+        # reasoner model always has thinking, don't inject "thinking" key
+        assert "thinking" not in body
+
+    def test_parse_reasoning_content(self):
+        adapter = DeepSeekAdapter()
+        events = adapter.parse_stream_line(
+            '{"choices":[{"delta":{"reasoning_content":"Let me think..."},"index":0}]}'
+        )
+        assert len(events) == 1
+        assert events[0].type == StreamEventType.REASONING
+        assert events[0].delta == "Let me think..."
+
+
+class TestStreamEventTypes:
+    """Verify all stream event type values."""
+
+    def test_all_event_types(self):
+        types = {e.value for e in StreamEventType}
+        expected = {"chunk", "reasoning", "reasoning_signature",
+                    "tool_call_start", "tool_call_delta", "error", "done"}
+        assert types == expected
+
+    def test_stream_event_creation(self):
+        evt = StreamEvent(
+            type=StreamEventType.TOOL_CALL_START,
+            tool_call_id="call_123",
+            tool_name="read_file",
+        )
+        assert evt.tool_name == "read_file"
+        assert "tool_call_start" in repr(evt)
+
+
+class TestToolDefinition:
+    """Verify ToolDefinition dataclass."""
+
+    def test_tool_definition_fields(self):
+        td = ToolDefinition(
+            name="search",
+            description="Search the web",
+            parameters={"type": "object", "properties": {"q": {"type": "string"}}},
+        )
+        assert td.name == "search"
+        assert "q" in td.parameters["properties"]
+
+
+class TestStreamRequestInput:
+    """Verify StreamRequestInput dataclass defaults."""
+
+    def test_default_values(self):
+        inp = StreamRequestInput(
+            base_url="https://api.test.com",
+            api_key="k",
+            model_id="m",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        assert inp.max_output_tokens == 8192
+        assert inp.temperature == 0.7
+        assert inp.thinking_enabled is False
+        assert inp.reasoning_effort == "high"
+        assert inp.tools is None
+
+
+class TestNonStreamRequest:
+    """Verify non-streaming request building."""
+
+    def test_build_non_stream_request(self):
+        adapter = OpenAICompatAdapter()
+        input_data = StreamRequestInput(
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+            model_id="gpt-4o",
+            messages=[{"role": "user", "content": "Hello"}],
+        )
+        req = adapter.build_non_stream_request(input_data)
+        body = json.loads(req.body)
+        assert body["stream"] is False

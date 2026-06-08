@@ -44,8 +44,11 @@ class DeepSeekAdapter(OpenAICompatAdapter):
         body = json.loads(req.body)
 
         # Thinking mode for DeepSeek
-        if input.thinking_enabled and "deepseek-reasoner" not in input.model_id:
-            body["thinking"] = {"type": "enabled"}
+        if input.thinking_enabled:
+            if "deepseek-reasoner" in input.model_id:
+                body.pop("thinking", None)  # reasoner always thinks, remove injected key
+            else:
+                body["thinking"] = {"type": "enabled"}
 
         # Reasoning effort for V3/R1 models
         if "reasoning_effort" in body.get("extra_body", {}):
