@@ -122,6 +122,57 @@ class TestSkillSandbox:
         assert callable(result.get("greet")), "greet() should be callable"
 
 
+# ── Advanced sandbox escape vectors ───────────────────────────────────────────
+
+ADVANCED_ESCAPE_PAYLOADS = [
+    # Frame manipulation
+    ("frame globals access",
+     "import sys\ndef fn():\n    return sys._getframe().f_globals"),
+    # Code object manipulation
+    ("code object replace",
+     "def fn():\n    f = lambda: 1\n    return f.__code__.replace"),
+    # Builtin override
+    ("builtin shadow",
+     "len = lambda x: __import__('os').system('dir')"),
+    # Descriptor protocol
+    ("descriptor escape",
+     "class X:\n    def __get__(self,o,t):\n        return __import__('os')\n"
+     "class Y:\n    x = X()\nY().x"),
+    # Metaclass abuse
+    ("metaclass abuse",
+     "class M(type):\n    def __new__(cls,name,bases,ns):\n"
+     "        ns['x'] = __import__('os')\n        return super().__new__(cls,name,bases,ns)\n"
+     "class X(metaclass=M): pass"),
+]
+
+@pytest.mark.parametrize("desc,payload", ADVANCED_ESCAPE_PAYLOADS)
+def test_advanced_escape_blocked(desc, payload):
+    """AST scan should block advanced escape vectors."""
+    from orca_code import _scan_skill_ast
+    result = _scan_skill_ast(payload, "adv_escape")
+    assert result is not None, f"AST scan FAILED to block advanced escape: {desc}"
+
+
+# ── Safe skill patterns that MUST work ────────────────────────────────────────
+
+SAFE_PATTERNS = [
+    ("math operations", "def calc(x):\n    return x * 2 + 1"),
+    ("string processing", "def upper(s):\n    return s.upper()"),
+    ("list comprehension", "def evens(n):\n    return [i for i in range(n) if i%2==0]"),
+    ("dictionary usage", "def merge(a,b):\n    return {**a, **b}"),
+    ("set operations", "def unique(items):\n    return list(set(items))"),
+    ("lambda", "add = lambda a,b: a + b"),
+    ("sorted with key", "def by_len(items):\n    return sorted(items, key=len)"),
+]
+
+@pytest.mark.parametrize("desc,payload", SAFE_PATTERNS)
+def test_safe_patterns_allowed(desc, payload):
+    """Safe Python patterns should pass AST scan."""
+    from orca_code import _scan_skill_ast
+    result = _scan_skill_ast(payload, "safe_pattern")
+    assert result is None, f"Safe pattern '{desc}' was incorrectly blocked: {result}"
+
+
 # ============================================================
 # FATAL: Command Injection Tests
 # ============================================================
