@@ -134,12 +134,56 @@ run_tool(name, args) ◄─────────── tool_registry.py
     └─ verification_marker()
 ```
 
+## Rust Native Engine
+
+```
+orca_native/
+├── Cargo.toml              Rust crate (ripgrep + ignore + pyo3)
+├── build_and_install.py    Build + install script
+├── src/                    Rust source (search, diff, walk)
+├── target/release/         Compiled .pyd (2.5MB)
+└── python/orca_native/     Python package + pure Python fallbacks
+```
+
+加载: `importlib.util.spec_from_file_location` + `sys.modules` 恢复。
+搜索性能: 0.011s (10-100x vs Python 回退).
+
+## Web Dashboard
+
+```
+Flask at localhost:8499
+  /         HTML dashboard (auto-refresh 5s)
+  /stats    JSON session stats
+  /tools    JSON tool list
+  /health   JSON health check
+```
+
+## pip Install
+
+```bash
+pip install -e .                  # minimal
+pip install -e ".[gui,browser]"   # optional groups
+orca-code --version               # entry point
+orca-dashboard                    # dashboard
+```
+
+## Key Metrics
+
+| Metric | Value |
+|--------|-------|
+| Tools | 58 (57 class-based + bridge) |
+| Tests | 99+ passed |
+| Providers | 4 (DeepSeek/OpenAI/Anthropic/Local) |
+| Circular deps | 0 |
+| Wildcard imports | 0 |
+| Rust search | 0.011s |
+
 ## Testing
 
 ```
 tests/
 ├── conftest.py              Fixtures (temp_dir, temp_file, mock_config)
-├── test_security.py         35 tests: sandbox escape, command injection, config coercion
+├── test_security.py         35+ tests: sandbox escape, command injection, config coercion
 ├── test_tools.py            30 tests: execute, edit, diff, write, read, list
 ├── test_errors.py           Error classification
 ├── test_feature_flags.py    Feature flag system

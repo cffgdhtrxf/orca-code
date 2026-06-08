@@ -2,213 +2,118 @@
 
 ## Development Setup
 
-```powershell
-# 1. Create venv
+```bash
+# 1. Clone
+git clone <repo-url>
+cd orca_code
+
+# 2. Virtual environment
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
 
-# 2. Install Python deps
-pip install -r requirements.txt
+# 3. Install in dev mode
+pip install -e ".[dev]"
 
-# 3. Build Rust native engine (optional, 10-100x search boost)
+# 4. (Optional) Build Rust native engine — 10-100x search speedup
 cd orca_native
-pip install maturin
-$env:PYTHONUTF8=1; maturin develop --release
+cargo build --release
+python build_and_install.py
 cd ..
 ```
 
 ## Running Tests
 
 ```bash
-# All fast tests
-pytest tests/test_errors.py tests/test_feature_flags.py tests/test_providers.py tests/test_tools.py tests/test_security.py
+# All tests
+python -m pytest tests/ -v
 
-# Specific test file
-pytest tests/test_security.py -v
+# Specific suites
+python -m pytest tests/test_tools.py -v       # Tool tests (30)
+python -m pytest tests/test_security.py -v    # Security tests (35+)
+python -m pytest tests/test_providers.py -v   # Provider tests (24)
+python -m pytest tests/test_integration.py -v # Integration tests (22+)
 
-# Full suite (may be slow due to config init)
-pytest tests/ -v
+# With coverage
+python -m pytest tests/ --cov=orca_code --cov-report=html
 ```
 
 ## Architecture
 
-```
-orca_code/                          # 27 modules
-├── main.py / session.py            # Main loop + LLM session
-├── config.py                       # Lazy config (delegates to config_loader)
-├── constitution.py                 # 5-tier authority hierarchy
-├── permissions.py / security.py    # Permission + security layers
-│
-├── core/                           # Core abstractions
-│   ├── errors.py                   # Error classification + retry
-│   └── event_bus.py                # Pub-sub event bus (23 types)
-│
-├── providers/                      # Multi-LLM adapters (Proma pattern)
-│   ├── base.py                     # ProviderAdapter ABC
-│   ├── registry.py                 # Adapter registry + auto-detect
-│   ├── deepseek.py                 # DeepSeek (thinking mode)
-│   ├── openai_compat.py            # OpenAI compatible
-│   ├── anthropic_compat.py         # Anthropic Messages API
-│   └── local.py                    # Ollama / LM Studio
-│
-├── tools/                          # Tool system (Claude Code Tool class)
-│   ├── base.py                     # Tool ABC + ToolRegistry
-│   ├── bridge.py                   # 63 legacy → new registry + EventBus
-│   ├── core.py                     # 8 file/command/search tools
-│   ├── web.py                      # 5 web tools
-│   ├── dev.py                      # 6 Git/code nav tools
-│   ├── office.py                   # 6 office tools
-│   ├── automation.py               # 12 GUI/browser tools
-│   ├── tasks.py                    # 4 task management tools
-│   └── extended.py                 # 14 skills/LSP/subagent/voice
-│
-├── infrastructure/                 # Infrastructure layer
-│   ├── config_loader.py            # Pure config loading (zero side effects)
-│   ├── provider_client.py          # Provider-aware client factory
-│   ├── feature_flags.py            # Compile-time feature gates
-│   ├── platform.py                 # Platform detection + console init
-│   ├── metrics.py                  # Tool timing p50/p95/p99
-│   └── file_logger.py              # JSONL structured logging
-│
-└── cli/                            # CLI layer
-    ├── commands.py                 # /command handlers
-    ├── input_handler.py            # Keyboard/voice/paste input
-    └── main_loop.py                # Main event loop
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map and data flow.
 
-orca_native/                         # Rust native engine (PyO3)
-├── Cargo.toml
-├── src/search.rs                    # ripgrep code search
-├── src/diff.rs                      # unified diff application
-└── src/walk.rs                      # .gitignore-aware file walk
-```
+Key principles:
+- **No circular imports** — `tool_registry.py` is the single source of truth for tools
+- **Lazy resolution** — `update_profile`/`recall_conversation` resolved at call time
+- **Explicit imports only** — zero wildcard imports in main.py
+- **Session split** — messages/prompt/ui/stream in separate submodules
 
 ## Adding a New Tool
 
-### Option A: Tool Class (recommended)
+### Option A: Class-based (recommended)
 
 ```python
-# In orca_code/tools/xxx.py
-from orca_code.permissions import RiskLevel
+# orca_code/tools/example.py
 from orca_code.tools.base import Tool
+from orca_code.permissions import RiskLevel
 
-class MyNewTool(Tool):
-    name = "my_new_tool"
-    description = "What this tool does"
-    risk_level = RiskLevel.READ  # READ | WRITE | EXEC
+class MyTool(Tool):
+    name = "my_tool"
+    description = "Does something useful"
     parameters = {
         "type": "object",
         "properties": {
-            "arg1": {"type": "string", "description": "..."},
+            "input": {"type": "string", "description": "Input data"},
         },
-        "required": ["arg1"],
     }
+    required = ["input"]
+    risk_level = RiskLevel.READ
 
-    def execute(self, arg1: str) -> str:
+    def execute(self, input: str) -> str:
         # Implementation
-        return f"Result: {arg1}"
-
-def register_xxx_tools(registry) -> int:
-    tools = [MyNewTool()]
-    count = 0
-    for t in tools:
-        if t.name not in registry:
-            registry.register(t)
-            count += 1
-    return count
+        return f"Result: {input}"
 ```
 
-Then register in `tools/bridge.py` → `init_bridge()`.
-
-### Option B: Legacy Function (for quick additions)
-
+Then register:
 ```python
-# In orca_code/tools_core.py or similar
-def my_new_tool(arg1: str) -> str:
-    """What this tool does."""
-    return f"Result: {arg1}"
-
-# In main.py TOOL_MAP
-"my_new_tool": my_new_tool,
+from orca_code.tools import tool_registry
+from orca_code.tools.example import MyTool
+tool_registry.register(MyTool())
 ```
 
-Add risk level in `permissions.py` → `TOOL_RISK`.
-
-## Permission System
-
-Every tool must declare a risk level in `permissions.py`:
+### Option B: Flat function (legacy)
 
 ```python
-TOOL_RISK = {
-    "my_new_tool": RiskLevel.READ,    # or WRITE, EXEC
-}
-```
+# orca_code/tools_core.py
+def my_tool(input: str) -> str:
+    return f"Result: {input}"
 
-- `READ` — reads data, no mutation
-- `WRITE` — mutates files but no arbitrary code execution
-- `EXEC` — executes code, shells out, drives GUI/browser
-
-## Provider System
-
-Add a new LLM provider by implementing `ProviderAdapter`:
-
-```python
-from orca_code.providers.base import ProviderAdapter, StreamRequestInput, ProviderRequest
-
-class MyProvider(ProviderAdapter):
-    provider_type = "my_provider"
-    provider_label = "My Provider"
-
-    def build_stream_request(self, input: StreamRequestInput) -> ProviderRequest:
-        ...
-
-    def parse_stream_line(self, json_line: str) -> list[StreamEvent]:
-        ...
-```
-
-Register in `providers/__init__.py` → `_init()`.
-
-## EventBus
-
-Listen to tool events:
-
-```python
-from orca_code.core.event_bus import get_event_bus, EventType
-
-bus = get_event_bus()
-
-@bus.on(EventType.TOOL_RESULT)
-def on_tool_done(event):
-    data = event.data
-    print(f"Tool {data['name']} done in {data['elapsed_ms']:.0f}ms")
+# orca_code/tool_registry.py
+from orca_code.tools_core import my_tool
+TOOL_MAP["my_tool"] = my_tool
+TOOLS.append({...})  # Add schema definition
 ```
 
 ## Code Style
 
-- Python 3.12+ idioms preferred
-- `from __future__ import annotations` in all new modules
-- Full type hints on public APIs
-- Minimal comments — code should be self-documenting
-- Chinese strings in tool descriptions for DeepSeek compatibility
-- Import from submodules directly: `from orca_code.tools import tool_registry`
+- 中文 UI，英文代码
+- 函数用 snake_case，类用 PascalCase
+- 不写注释——代码自解释
+- 不过度抽象——一个函数做一件事
+- 导入顺序：标准库 → 第三方 → 项目内部
 
-## Feature Flags
+## Testing Guidelines
 
-Control experimental features:
+- 每个新工具至少 3 个测试
+- 安全相关必须有参数化测试（逃逸向量）
+- 用 `tmp_path` fixture 做文件测试
+- Mock 外部 API 调用
 
-```python
-from orca_code.infrastructure import FeatureFlags
+## Release Checklist
 
-if FeatureFlags.is_enabled("ENABLE_BROWSER"):
-    # Browser automation code
-    ...
-```
-
-Environment overrides: `ORCA_ENABLE_BROWSER=1` or `ORCA_DISABLE_VOICE=1`.
-
-## Release Process
-
-1. Update `docs/2026-MM-DD_开发总结.md`
-2. Update `docs/CHANGELOG.md`
-3. Bump `__version__` in `orca_code/__init__.py`
-4. Run full test suite: `pytest tests/ -v`
-5. Tag: `git tag v5.x.x && git push --tags`
+- [ ] 所有测试通过
+- [ ] CHANGELOG.md 更新
+- [ ] pyproject.toml 版本号更新
+- [ ] `python orca_code.py --version` 正确
+- [ ] `pip install -e .` 成功
+- [ ] git tag vX.Y.Z

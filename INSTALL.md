@@ -9,24 +9,22 @@
 ## Quick Start
 
 ```bash
-# 1. Clone or download
-git clone <repo-url>
-cd orca_code
+# 1. Clone
+git clone <repo-url> && cd orca_code
 
-# 2. Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-# source .venv/bin/activate  # Linux/macOS
+# 2. Install (creates orca-code entry point)
+pip install -e .
 
-# 3. Install dependencies
-pip install -r requirements.txt
+# 3. Optional: install extra features
+pip install -e ".[gui,browser,office]"
 
-# 4. Configure API key
+# 4. Configure
 cp config.example.json config.json
-# Edit config.json — set your api_key
+# Edit config.json → set api_key
 
 # 5. Run
-python orca_code.py
+orca-code
+# or: python orca_code.py
 ```
 
 ## Configuration
