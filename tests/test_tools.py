@@ -283,3 +283,87 @@ class TestListFiles:
         from orca_code.tools_core import list_files
         result = list_files("/nonexistent/dir")
         assert "不是目录" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Parameterized tests — encoding, sizes, edge cases
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestReadFileEncodings:
+    """Parameterized encoding tests for read_file."""
+
+    ENCODINGS = [
+        ("utf-8", "Hello 世界"),
+        ("gbk", "中文测试"),
+        ("utf-8-sig", "﻿BOM content"),
+    ]
+
+    @pytest.mark.parametrize("encoding,content", ENCODINGS)
+    def test_read_encoding(self, tmp_path, encoding, content):
+        from orca_code.tools_core import read_file
+        f = tmp_path / "test.txt"
+        f.write_text(content, encoding=encoding)
+        result = read_file(str(f))
+        assert "错误" not in result
+
+    EMPTY_FILES = [0, 1, 1024]
+
+    @pytest.mark.parametrize("size", EMPTY_FILES)
+    def test_read_various_sizes(self, tmp_path, size):
+        from orca_code.tools_core import read_file
+        f = tmp_path / "test.txt"
+        f.write_bytes(b"x" * size)
+        result = read_file(str(f))
+        assert "错误" not in result
+
+
+class TestEditFileBoundaries:
+    """Parameterized boundary tests for edit_file."""
+
+    REPLACEMENTS = [
+        ("start", "START", "at beginning"),
+        ("end", "END", "at end"),
+        ("middle", "MIDDLE", "in middle"),
+    ]
+
+    @pytest.mark.parametrize("old,new,desc", REPLACEMENTS)
+    def test_replacement_positions(self, tmp_path, old, new, desc):
+        from orca_code.tools_core import edit_file
+        content = f"start\nmiddle\nend\n"
+        f = tmp_path / "test.txt"
+        f.write_text(content, encoding="utf-8")
+        result = edit_file(str(f), old, new)
+        assert "已编辑" in result
+        assert new in f.read_text(encoding="utf-8")
+
+
+class TestWriteFileEdgeCases:
+    """Edge cases for write_file."""
+
+    @pytest.mark.parametrize("content", [
+        "", "x", "line1\nline2\nline3", "hello",
+    ])
+    def test_write_various_content(self, content, tmp_path):
+        from orca_code.tools_core import write_file
+        f = tmp_path / "output.txt"
+        result = write_file(str(f), content)
+        assert "已写入" in result
+
+
+class TestSearchContentEdgeCases:
+    """Edge cases for search_content."""
+
+    @pytest.mark.parametrize("pattern,should_find", [
+        ("hello", True),
+        ("HELLO", True),  # case insensitive
+        ("NONEXISTENT", False),
+        (r"line\d", True),  # regex
+    ])
+    def test_search_patterns(self, tmp_path, pattern, should_find):
+        from orca_code.tools_core import search_content
+        (tmp_path / "test.txt").write_text("hello world\nline1\nline2\n", encoding="utf-8")
+        result = search_content(pattern, str(tmp_path))
+        if should_find:
+            assert "未找到" not in result
+        else:
+            assert "未找到" in result

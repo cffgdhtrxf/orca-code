@@ -14,6 +14,9 @@ class MemoryManager:
         self.db_path = db_path
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA cache_size=-8000")  # 8MB cache
+        self._conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
         self._has_fts = True
         self._init_db()
 

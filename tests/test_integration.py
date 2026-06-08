@@ -5,8 +5,149 @@ backward compatibility with the existing TOOL_MAP system.
 """
 
 import json
+from unittest.mock import patch, MagicMock
 import pytest
 from pathlib import Path
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Mock API streaming tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class MockStreamChunk:
+    def __init__(self, content="", reasoning="", tool_calls=None, usage=None):
+        self.choices = [MagicMock()]
+        self.choices[0].delta = MagicMock()
+        self.choices[0].delta.content = content
+        self.choices[0].delta.reasoning_content = reasoning
+        self.choices[0].delta.tool_calls = tool_calls or []
+        self.usage = usage
+
+
+class TestMockAPIStream:
+    """Verify stream processing with mocked API responses."""
+
+    def test_process_text_stream(self):
+        """Text-only stream should accumulate content."""
+        from orca_code.session_stream import process_stream
+        chunks = [
+            MockStreamChunk(content="Hello "),
+            MockStreamChunk(content="World"),
+            MagicMock(choices=[], usage=MagicMock(prompt_tokens=10, completion_tokens=5)),
+        ]
+        reasoning, answer, tools, usage = process_stream(chunks)
+        assert "Hello World" in answer
+        assert reasoning == ""
+        assert tools == {}
+
+    def test_process_reasoning_stream(self):
+        """Reasoning content should be captured separately."""
+        from orca_code.session_stream import process_stream
+        chunks = [
+            MockStreamChunk(reasoning="Let me think..."),
+            MockStreamChunk(content="The answer"),
+            MagicMock(choices=[], usage=None),
+        ]
+        reasoning, answer, tools, usage = process_stream(chunks)
+        assert "Let me think" in reasoning
+        assert "The answer" in answer
+
+    def test_process_tool_call_stream(self):
+        """Tool call deltas should be accumulated by index."""
+        from orca_code.session_stream import process_stream
+        tc_delta = MagicMock()
+        tc_delta.index = 0
+        tc_delta.id = "call_1"
+        tc_delta.function = MagicMock()
+        tc_delta.function.name = "read_file"
+        tc_delta.function.arguments = '{"path":'
+
+        tc_delta2 = MagicMock()
+        tc_delta2.index = 0
+        tc_delta2.id = None
+        tc_delta2.function = MagicMock()
+        tc_delta2.function.name = None
+        tc_delta2.function.arguments = '"/tmp/test.txt"}'
+
+        chunks = [
+            MockStreamChunk(tool_calls=[tc_delta]),
+            MockStreamChunk(tool_calls=[tc_delta2]),
+            MagicMock(choices=[], usage=None),
+        ]
+        reasoning, answer, tools, usage = process_stream(chunks)
+        assert 0 in tools
+        assert tools[0]["function_name"] == "read_file"
+        assert "/tmp/test.txt" in tools[0]["function_arguments"]
+
+    def test_sanitize_messages_removes_orphan_tools(self):
+        """Tool messages without matching tool_call should be removed."""
+        from orca_code.session_messages import sanitize_messages
+        msgs = [
+            {"role": "user", "content": "hello"},
+            {"role": "tool", "tool_call_id": "orphan_1", "content": "result"},
+            {"role": "assistant", "content": "reply"},
+        ]
+        cleaned = sanitize_messages(msgs)
+        tool_msgs = [m for m in cleaned if m["role"] == "tool"]
+        assert len(tool_msgs) == 0
+
+    def test_sanitize_messages_preserves_valid_tools(self):
+        """Tool messages with matching tool_call should be preserved."""
+        from orca_code.session_messages import sanitize_messages
+        msgs = [
+            {"role": "user", "content": "read /tmp/test.txt"},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "call_1", "type": "function", "function": {"name": "read_file", "arguments": '{"path":"/tmp/test.txt"}'}}
+            ]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "file contents"},
+        ]
+        cleaned = sanitize_messages(msgs)
+        tool_msgs = [m for m in cleaned if m["role"] == "tool"]
+        assert len(tool_msgs) == 1
+
+    def test_token_estimation_non_empty(self):
+        """Token estimation should return positive count for non-empty text."""
+        from orca_code.utils import _estimate_tokens
+        tokens = _estimate_tokens("Hello World")
+        assert tokens > 0
+
+    def test_token_estimation_empty(self):
+        """Token estimation should return 0 for empty text."""
+        from orca_code.utils import _estimate_tokens
+        assert _estimate_tokens("") == 0
+        assert _estimate_tokens(None) == 0
+
+    def test_call_model_includes_stream_options(self):
+        """call_model should include stream_options for usage reporting."""
+        from orca_code.session_stream import call_model
+        from orca_code.session_messages import _get_tools
+        from orca_code.config import MODEL
+
+        mock_client = MagicMock()
+        mock_create = MagicMock()
+        mock_client.chat.completions.create = mock_create
+
+        msgs = [{"role": "user", "content": "hello"}]
+        with patch('orca_code.session_stream.client', mock_client):
+            call_model(msgs)
+
+        call_kwargs = mock_create.call_args[1]
+        assert "stream_options" in call_kwargs
+        assert call_kwargs["stream_options"]["include_usage"] is True
+
+    def test_error_classification_network(self):
+        """Network errors should be classified as retryable."""
+        from orca_code.core.errors import classify_error, ErrorCategory
+        cat, retry = classify_error(ConnectionError("Connection refused"))
+        assert cat == ErrorCategory.NETWORK
+        assert retry is True
+
+    def test_error_classification_auth(self):
+        """Auth errors should NOT be retryable."""
+        from orca_code.core.errors import classify_error, ErrorCategory
+        cat, retry = classify_error(Exception("Invalid API Key"))
+        assert cat == ErrorCategory.AUTH
+        assert retry is False
 
 
 class TestProviderClient:

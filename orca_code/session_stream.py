@@ -20,6 +20,7 @@ from rich.padding import Padding
 from orca_code.config import (MODEL, BASE_URL, API_KEY,
     IS_DEEPSEEK, IS_LOCAL, IS_MULTIMODAL, USE_SIMPLE_PROMPT,
     ENABLE_THINK_MODE, REASONING_EFFORT, MAX_OUTPUT_TOKENS,
+    CONTEXT_MAX_TOKENS,
     MAX_WORKERS, client, console)
 from orca_code.utils import _sanitize_ansi, fix_truncated_json
 from orca_code.tool_registry import TOOLS, TOOL_MAP, run_tool
@@ -54,6 +55,11 @@ def call_model(messages):
             texts = [p.get("text","") for p in clean["content"] if isinstance(p, dict) and p.get("type")=="text"]
             clean["content"] = " ".join(texts) if texts else "[image]"
         api_messages.append(clean)
+
+    # Token budget: warn if approaching context limit
+    total_est = sum(_msg_tokens(m) for m in api_messages)
+    if total_est > CONTEXT_MAX_TOKENS * 0.9:
+        console.print(f"[yellow]⚠ Token budget: ~{total_est:,}/{CONTEXT_MAX_TOKENS:,} (90%+) — trim recommended[/yellow]")
 
     kwargs = {
         "model": MODEL,

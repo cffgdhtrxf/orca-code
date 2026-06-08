@@ -153,9 +153,14 @@ def load_config(
         cfg.update(user)
         return cfg
 
+    # Legacy TXT config: read once and migrate to JSON
     if config_txt.exists():
         user = _load_txt(config_txt)
         cfg.update(user)
+        # Auto-migrate to JSON
+        config_json.write_text(
+            json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return cfg
 
     # Neither exists: create default JSON template
