@@ -1,0 +1,37 @@
+[package]
+name = "orca-native"
+version = "0.1.0"
+edition = "2021"
+description = "Rust native performance modules for Orca Code — search, diff, walk, tokenize"
+license = "MIT"
+
+[lib]
+name = "orca_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["extension-module"] }
+
+# ripgrep's search engine — fastest code search available
+grep-regex = "0.1"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+
+# gitignore-aware file walking (same crate ripgrep uses)
+ignore = "0.4"
+
+# diff parsing and application
+similar = "3"
+
+# regex for pattern matching
+regex = "1"
+
+# parallel processing
+rayon = "1"
+num_cpus = "1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true

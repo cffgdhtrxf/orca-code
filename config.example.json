@@ -42,5 +42,11 @@
   "// ======== 个性化 ========": "",
   "persona": "",
   "preferred_shell": "",
-  "auto_install_deps": true
+  "auto_install_deps": true,
+
+  "// ======== 权限控制 ========": "",
+  "// permission_mode: \"read-only\" 仅允许读取 | \"auto\" 首次询问后记住(默认) | \"yolo\" 全部自动放行": "",
+  "permission_mode": "auto",
+  "// permission_rules: 按工具名覆盖权限 — \"allow\"(始终允许) | \"deny\"(始终拒绝) | \"ask\"(每次询问)": "",
+  "permission_rules": {}
 }

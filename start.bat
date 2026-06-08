@@ -50,7 +50,7 @@ echo   Configuration ready
 
 :: ---- Step 4: Quick syntax check ----
 echo [4/5] Checking Python files...
-.venv\Scripts\python -c "import py_compile; py_compile.compile('ultimate_agent.py', doraise=True)" 2>nul
+.venv\Scripts\python -c "import py_compile; py_compile.compile('orca_code.py', doraise=True)" 2>nul
 if errorlevel 1 (
     echo [WARNING] Syntax check failed - but continuing...
 ) else (
@@ -73,7 +73,7 @@ echo ======================================
 echo.
 
 :: ---- Launch (keep window open on crash) ----
-.venv\Scripts\python ultimate_agent.py
+.venv\Scripts\python orca_code.py
 set EXITCODE=%errorlevel%
 
 if %EXITCODE% neq 0 (

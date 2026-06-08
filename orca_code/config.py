@@ -157,8 +157,8 @@ SPEECH_BACKEND = _SPEECH_BACKEND
 _client = None
 _mem_mgr = None
 _perm_store = None
-_balance_cache = {"value": "N/A", "ts": 0.0}
-search_cache = {}  # Simple dict cache for web search results
+# search_cache, _balance_cache, ensure_pkg, get_api_balance → infrastructure/helpers
+from orca_code.infrastructure.helpers import search_cache, ensure_pkg, get_api_balance  # noqa: E402, F401
 
 _sensitive_keys = {"api_key", "memory_api_key", "tavily_api_key"}
 
@@ -185,26 +185,7 @@ def _get_mem_mgr():
     return _mem_mgr if _mem_mgr is not False else None
 
 
-def ensure_pkg(pkg_name: str, import_name: str = "") -> bool:
-    """Ensure a Python package is installed. Returns True if available."""
-    if not import_name:
-        import_name = pkg_name
-    try:
-        __import__(import_name)
-        return True
-    except ImportError:
-        if AUTO_INSTALL_DEPS:
-            import subprocess, sys
-            try:
-                subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", pkg_name],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-                return True
-            except Exception:
-                return False
-        return False
-
+# ensure_pkg is imported from orca_code.infrastructure.helpers
 
 def _get_perm_store():
     global _perm_store
@@ -232,31 +213,7 @@ def __getattr__(name: str):
     raise AttributeError(f"module 'orca_code.config' has no attribute '{name}'")
 
 
-# ─── Helper functions ────────────────────────────────────────────────────────
-
-def get_api_balance() -> str:
-    now = __import__('time').time()
-    if now - _balance_cache["ts"] < 60:
-        return _balance_cache["value"]
-    if not API_KEY or IS_LOCAL:
-        return "N/A"
-    try:
-        if "deepseek" in BASE_URL.lower():
-            import requests
-            resp = requests.get(
-                "https://api.deepseek.com/user/balance",
-                headers={"Authorization": f"Bearer {API_KEY}"},
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                bal = data.get("balance_infos", [{}])[0].get("total_balance", "?")
-                _balance_cache["value"] = str(bal)
-                _balance_cache["ts"] = now
-                return str(bal)
-    except Exception:
-        pass
-    return "N/A"
+# get_api_balance is imported from orca_code.infrastructure.helpers
 
 
 # CLI command handlers (handle_config_cmd, handle_profile_cmd)

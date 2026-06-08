@@ -11,5 +11,5 @@ if not exist ".venv\Scripts\python.exe" (
 echo.
 echo Starting Orca Code (Local Mode)...
 echo Make sure LM Studio / Ollama is running!
-.venv\Scripts\python ultimate_agent.py
+.venv\Scripts\python orca_code.py
 pause

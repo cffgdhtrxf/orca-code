@@ -1,5 +1,5 @@
 """Build clean main.py from legacy sections."""
-with open('ultimate_agent_legacy.py', 'r', encoding='utf-8') as f:
+with open('orca_code_legacy.py', 'r', encoding='utf-8') as f:
     lines = f.read().split('\n')
 
 sections = []
@@ -20,7 +20,7 @@ sections.append('\n'.join(lines[4386:]))
 
 body = '\n\n'.join(sections)
 
-header = '''"""ultimate_agent.main — Tool registry, user input, main loop."""
+header = '''"""orca_code.main — Tool registry, user input, main loop."""
 
 import os, sys, json, re, time, unicodedata, inspect
 import base64
@@ -28,21 +28,21 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
 
-from ultimate_agent.config import (CONFIG, SCRIPT_DIR, SAVE_DIR, TEMP_DIR,
+from orca_code.config import (CONFIG, SCRIPT_DIR, SAVE_DIR, TEMP_DIR,
     SKILLS_DIR, WORKING_DIR, HAS_MEMORY, HAS_SPEECH_RECOGNITION,
     ENABLE_VOICE, SPEECH_BACKEND, ENABLE_GUI_AUTO, ENABLE_BROWSER_AUTO,
     IS_MULTIMODAL, MODEL, BASE_URL, API_KEY, TERM_WIDTH,
     mem_mgr, console, client, mask_key, get_api_balance)
-from ultimate_agent.tools_core import *
-from ultimate_agent.tools_office import *
-from ultimate_agent.tools_web import *
-from ultimate_agent.tools_dev import *
-from ultimate_agent.tools_skills import *
-from ultimate_agent.tools_automation import *
-from ultimate_agent.tts_mcp import (speak_text, voice_input, init_mcp_tools,
+from orca_code.tools_core import *
+from orca_code.tools_office import *
+from orca_code.tools_web import *
+from orca_code.tools_dev import *
+from orca_code.tools_skills import *
+from orca_code.tools_automation import *
+from orca_code.tts_mcp import (speak_text, voice_input, init_mcp_tools,
     init_speech_recognition)
-from ultimate_agent.session import *
-from ultimate_agent.utils import (_msg_tokens, _estimate_tokens,
+from orca_code.session import *
+from orca_code.utils import (_msg_tokens, _estimate_tokens,
     cleanup_temp_files, resolve_tool_path)
 
 try:
@@ -58,12 +58,12 @@ except ImportError:
 
 '''
 
-with open('ultimate_agent/main.py', 'w', encoding='utf-8') as f:
+with open('orca_code/main.py', 'w', encoding='utf-8') as f:
     f.write(header + body)
 
 import py_compile
 try:
-    py_compile.compile('ultimate_agent/main.py', doraise=True)
+    py_compile.compile('orca_code/main.py', doraise=True)
     print('main.py: SYNTAX OK')
 except py_compile.PyCompileError as e:
     print(f'SYNTAX ERROR: {e}')

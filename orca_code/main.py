@@ -21,8 +21,13 @@ from orca_code.tools_skills import (_loaded_skills, _md_skill_cache,
     start_scheduler)
 from orca_code.tts_mcp import (speak_text, voice_input, init_mcp_tools,
     init_speech_recognition)
-from orca_code.session import *
-from orca_code.session import _msg_tokens
+from orca_code.session import (
+    session, build_system_prompt, sanitize_messages, smart_trim_messages,
+    call_model, process_stream, execute_tool_calls,
+    show_welcome, show_help, show_stats, show_cache, show_usage,
+    print_gap, print_soft_gap, auto_save, save_conversation,
+    _msg_tokens,
+)
 from orca_code.utils import (_estimate_tokens, cleanup_temp_files, resolve_tool_path)
 from orca_code.tool_registry import TOOLS, TOOL_MAP, run_tool
 from orca_code.subagent import agent_open, agent_eval, agent_close

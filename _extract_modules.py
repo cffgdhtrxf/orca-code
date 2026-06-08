@@ -1,8 +1,8 @@
-"""One-shot extraction: split ultimate_agent_legacy.py into package modules."""
+"""One-shot extraction: split orca_code_legacy.py into package modules."""
 import ast, sys, os
 
-LEGACY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ultimate_agent_legacy.py')
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ultimate_agent')
+LEGACY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'orca_code_legacy.py')
+OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'orca_code')
 
 with open(LEGACY, 'r', encoding='utf-8') as f:
     source = f.read()
@@ -157,18 +157,18 @@ else:
 
 # Write modules
 DOCSTRINGS = {
-    'config.py': '"""ultimate_agent.config — Configuration, globals, cache, client."""',
-    'utils.py': '"""ultimate_agent.utils — Encoding, paths, tokens, cleanup."""',
-    'security.py': '"""ultimate_agent.security — Dangerous patterns, URL check, sandbox."""',
-    'tools_core.py': '"""ultimate_agent.tools_core — Core tools: execute, read, write, list, search."""',
-    'tools_office.py': '"""ultimate_agent.tools_office — Excel, Word, screenshot, OCR."""',
-    'tools_web.py': '"""ultimate_agent.tools_web — Web fetch, search, weather, location."""',
-    'tools_dev.py': '"""ultimate_agent.tools_dev — Git, code nav, vision, Python REPL."""',
-    'tools_skills.py': '"""ultimate_agent.tools_skills — Skill system + scheduler."""',
-    'tools_automation.py': '"""ultimate_agent.tools_automation — GUI + browser automation."""',
-    'tts_mcp.py': '"""ultimate_agent.tts_mcp — TTS, voice input, MCP protocol."""',
-    'session.py': '"""ultimate_agent.session — Session, system prompt, UI, messages, API."""',
-    'main.py': '"""ultimate_agent.main — Tool registry, user input, main loop."""',
+    'config.py': '"""orca_code.config — Configuration, globals, cache, client."""',
+    'utils.py': '"""orca_code.utils — Encoding, paths, tokens, cleanup."""',
+    'security.py': '"""orca_code.security — Dangerous patterns, URL check, sandbox."""',
+    'tools_core.py': '"""orca_code.tools_core — Core tools: execute, read, write, list, search."""',
+    'tools_office.py': '"""orca_code.tools_office — Excel, Word, screenshot, OCR."""',
+    'tools_web.py': '"""orca_code.tools_web — Web fetch, search, weather, location."""',
+    'tools_dev.py': '"""orca_code.tools_dev — Git, code nav, vision, Python REPL."""',
+    'tools_skills.py': '"""orca_code.tools_skills — Skill system + scheduler."""',
+    'tools_automation.py': '"""orca_code.tools_automation — GUI + browser automation."""',
+    'tts_mcp.py': '"""orca_code.tts_mcp — TTS, voice input, MCP protocol."""',
+    'session.py': '"""orca_code.session — Session, system prompt, UI, messages, API."""',
+    'main.py': '"""orca_code.main — Tool registry, user input, main loop."""',
 }
 
 for mod_name in MODULES:

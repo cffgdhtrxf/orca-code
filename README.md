@@ -1,164 +1,245 @@
- 🐋 Orca Code
+# 🐋 Orca Code v5.1
 
-**用自然语言控制你的 Windows 电脑。**
+**桌面 AI 代理 — 用自然语言控制你的 Windows 电脑，兼具专业级代码编辑能力。**
 
-Orca Code 是一个桌面 AI 智能体，你只需要说话，它就能替你操作电脑——点击按钮、填写表单、打开软件、搜索文件、读写文档、抓取网页……一切自然语言驱动。
+融合了 Claude Code 的权限模型和任务系统、CodeWhale 的 Constitution 权威体系、Proma 的 Provider 适配器架构。
 
 ```
-你说「打开网易云音乐播放我收藏的歌」→ AI 自动搜索→点击→播放
-你说「帮我整理下载文件夹，把 PDF 放到 Documents/PDFs」→ AI 自动操作
-你说「截图这片区域并 OCR 出文字」→ AI 截图+识别一气呵成
+说「打开网易云播我收藏的歌」→ AI 自动搜索→点击→播放
+说「重构这个模块，去掉循环导入」→ AI diff 精确替换 + LSP 诊断
+说「分析这个项目的安全漏洞」→ AI 启动子代理并发扫描
 ```
 
-> 🎬 ***[演示 GIF 在此 — 看看 Orca Code 的实际操作]*(docs/assets/demo.gif)*
+---
+
+## v5.1 新特性
+
+| 特性 | 说明 |
+|------|------|
+| **多 Provider** | DeepSeek / OpenAI / Anthropic / 本地模型 — 自动检测，无缝切换 |
+| **智能错误恢复** | 7 类错误自动分类 + 指数退避重试（网络/限流自动重试） |
+| **任务系统** | TaskCreate → TaskUpdate → TaskComplete 完整状态机 + 依赖管理 |
+| **事件总线** | 23 种事件类型，发布-订阅解耦，工具执行全生命周期可观测 |
+| **指标收集** | 工具耗时 p50/p95/p99，错误率追踪，JSONL 文件日志 |
+| **特征开关** | 15 个 FeatureFlags，编译时按需启用（GUI/Browser/OCR 默认关闭） |
+| **模块化架构** | 27 个模块，import 加速 143x（4s → 0.028s） |
+| **107 测试** | 覆盖错误分类/Provider/工具/安全/指标（v5.0 仅 20 个） |
 
 ---
 
 ## ✨ 核心能力
 
-| 能力 | 你能做什么 |
-|------|-----------|
-| **GUI 自动化** | 说「打开设置 → 关闭蓝牙」AI 自动点击鼠标、输入文字、操作窗口 |
-| **浏览器控制** | 「搜索 Python 异步框架对比并总结」AI 打开浏览器、搜索、阅读、总结 |
-| **语音交互** | 直接说话，AI 听懂并执行。支持 TTS 语音朗读回复 |
-| **办公处理** | 读/写 Excel、Word；截图 + OCR 提取文字 |
-| **代码开发** | Git 操作、代码导航、Python 即时执行、视觉分析 |
-| **技能扩展** | 用 Markdown 写技能，AI 自动加载执行，支持定时任务 |
-| **长期记忆** | AI 记住你的偏好和对话历史，越用越懂你 |
-
-更具体的 50+ 工具列表参见下方 [工具一览](#-内置工具-50-个)。
+| 能力 | 实现 |
+|------|------|
+| **桌面自动化** | GUI 点击/输入/热键/窗口控制 + OCR 找图 |
+| **专业编码** | edit_file (精确替换) + apply_diff (unified diff) + LSP 诊断 |
+| **子代理并发** | agent_open → 后台执行 → agent_eval 获取结果 + EventBus 事件 |
+| **语音交互** | Whisper/Vosk/Hybrid 语音输入 + SAPI TTS 朗读 |
+| **办公处理** | Excel/Word 读写 + 截图 + OCR |
+| **网页/搜索** | web_fetch + web_search + 天气 + 定位 |
+| **长期记忆** | SQLite FTS5 全文检索 + 用户画像跨会话学习 |
+| **技能扩展** | .py 工具技能 + .md 行为协议 + MCP 外部工具 |
+| **定时任务** | Cron / Interval 调度器 |
+| **多 Provider** | DeepSeek / OpenAI / Anthropic / Ollama / LM Studio |
+| **任务追踪** | TaskCreate/Update/Get/List — 结构化任务管理 + JSON 持久化 |
 
 ---
 
-## 🚀 5 秒快速开始
+## 🛡 安全
 
-```bash
-# 1. 双击 start.bat（自动安装依赖 + 启动）
-# 或手动操作：
+三层纵深防御，Claude Code 风格——**不烦人**：
+
+```
+Layer 0  → 始终拦截 (rm -rf /、format、curl|bash、fork bomb 等 8 条)
+Layer 1  → 权限系统 (read/write/exec 风险等级 + read-only/auto/yolo 三种模式)
+Layer 2  → 技能沙箱 (AST 静态分析 + 受限命名空间)
+```
+
+三个权限模式 `/permissions mode <read-only|auto|yolo>`：
+- **read-only** — 只读工具自动放行
+- **auto** — 首次使用询问一次，选择后记住（默认）
+- **yolo** — 全部自动放行
+
+---
+
+## 🚀 快速开始
+
+```powershell
+# 1. 双击 start.bat（自动创建 venv + 安装依赖）
+#    或手动：
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 
-# 2. 编辑 config.json 填入你的 API Key
-# 3. 启动
-python ultimate_agent.py
-```
+# 2. 编辑 config.json 填入 API Key
+# 3. 编译 Rust 原生引擎（可选，10-100x 搜索加速）：
+cd orca_native
+.venv\Scripts\pip install maturin
+$env:PYTHONUTF8=1; maturin develop --release
+cd ..
 
-> **只需一个入口：** `ultimate_agent.py`。所有功能都在这里。
+# 4. 启动
+python orca_code.py
+```
 
 ---
 
-## 🔒 隐私与安全
-
-Orca Code 是**本地优先**的桌面智能体：
-
-- **数据不出本机** — 所有对话、记忆、文件操作全在你的电脑上。唯一的网络请求是调用 LLM API
-- **完全离线可用** — 搭配 LM Studio / Ollama 等本地模型，可完全断网运行
-- **智能拦截** — 自动检测并阻止 `rm -rf /`、`format` 等破坏性命令
-- **技能沙箱** — 技能在受限 Python 环境中运行，无法访问文件系统或网络
-- **配置文件隔离** — API 密钥仅在 `config.json` (已加入 `.gitignore`)，不会被意外提交
-
----
-
-## 🏗 架构一览
+## 🏗 架构
 
 ```
-ultimate_agent/              # 主包（12 个模块）
-├── main.py                  # 工具注册表 + 主循环
-├── session.py               # 会话管理 + LLM API 调用
-├── config.py                # 配置加载 + 缓存 + 客户端
-├── security.py              # 危险命令检测 + 技能沙箱
-├── utils.py                 # 编码检测 + 路径解析 + token 估算
+orca_code/                          # 27 个模块
+├── main.py / session.py            # 主循环 + LLM 会话
+├── config.py                       # 配置（懒加载客户端）
+├── constitution.py                 # Constitution 五级权威体系
+├── permissions.py / security.py    # 权限 + 安全
 │
-├── tools_core.py            # 文件读写、搜索、命令执行
-├── tools_automation.py      # GUI 自动化（鼠标/键盘/窗口）
-├── tools_web.py             # 网页抓取、搜索、天气、定位
-├── tools_office.py          # Excel、Word、截图、OCR
-├── tools_dev.py             # Git、代码导航、视觉分析、摄像头
-├── tools_skills.py          # 技能系统 + 定时任务调度
-├── tts_mcp.py               # TTS 语音合成 + 语音输入
+├── core/                           # 核心抽象层
+│   ├── errors.py                   # 7 类错误 + 智能重试
+│   └── event_bus.py                # 23 种事件发布-订阅
+│
+├── providers/                      # 多 LLM 适配器
+│   ├── base.py                     # ProviderAdapter 抽象基类
+│   ├── registry.py                 # 注册表 + 自动检测
+│   ├── deepseek.py                 # DeepSeek（思考模式）
+│   ├── openai_compat.py            # OpenAI 兼容
+│   ├── anthropic_compat.py         # Anthropic 协议
+│   └── local.py                    # 本地模型
+│
+├── tools/                          # 工具系统
+│   ├── base.py                     # Tool 基类 + ToolRegistry
+│   ├── bridge.py                   # 63 工具桥接 + EventBus
+│   ├── core.py                     # 8 核心文件/命令工具
+│   ├── web.py                      # 5 Web 工具
+│   ├── dev.py                      # 6 Git/代码导航工具
+│   ├── office.py                   # 6 办公工具
+│   ├── automation.py               # 12 GUI/浏览器工具
+│   ├── tasks.py                    # 4 任务管理工具
+│   └── extended.py                 # 14 LSP/子代理/语音工具
+│
+├── infrastructure/                 # 基础设施
+│   ├── config_loader.py            # 纯配置加载
+│   ├── provider_client.py          # Provider 感知客户端
+│   ├── feature_flags.py            # 编译时特征开关
+│   ├── platform.py                 # 平台检测
+│   ├── metrics.py                  # 工具耗时 p50/p95/p99
+│   └── file_logger.py              # JSONL 结构化日志
+│
+└── cli/                            # CLI 层
+    ├── commands.py                 # /命令处理器
+    ├── input_handler.py            # 输入处理（键盘/语音/粘贴）
+    └── main_loop.py                # 主循环
+
+orca_native/                        # Rust 原生引擎 (PyO3)
+├── src/search.rs                   # ripgrep 代码搜索
+├── src/diff.rs                     # unified diff 应用
+└── src/walk.rs                     # .gitignore 感知文件遍历
 ```
+
+---
+
+## 🧰 工具一览 (63+4 任务)
+
+### 核心
+`execute_command` `read_file` `write_file` `edit_file` `apply_diff` `list_files` `search_files` `search_content` `get_system_info`
+
+### 任务系统 (v5.1 新增)
+`task_create` `task_update` `task_get` `task_list`
+
+### LSP
+`lsp_diagnostics` `lsp_references` `lsp_definition`
+
+### 子代理
+`agent_open` `agent_eval` `agent_close`
+
+### GUI
+`gui_click` `gui_type` `gui_move` `gui_hotkey` `gui_press` `window_focus` `find_on_screen`
+
+### 浏览器
+`browser_open` `browser_click` `browser_type` `browser_screenshot` `browser_close`
+
+### 办公
+`read_excel` `write_excel` `read_word` `write_word` `take_screenshot` `ocr_image`
+
+### 网络
+`web_fetch` `read_webpage` `web_search` `get_weather` `get_location`
+
+### 开发
+`git_status` `git_diff` `git_log` `git_blame` `go_to_definition` `find_references` `analyze_image` `capture_camera` `execute_python`
+
+### 技能
+`load_skill` `create_skill` `edit_skill` `list_skills` `load_md_skill` `list_md_skills` `add_task` `list_tasks` `remove_task`
+
+### 记忆
+`recall_conversation` `update_profile` `speak_text`
+
+---
+
+## ⌨️ 命令
+
+| 命令 | 功能 |
+|------|------|
+| `/help` | 帮助 |
+| `/voice` | 语音输入 |
+| `/config` | 查看/修改配置 |
+| `/permissions` | 管理工具权限 |
+| `/skills` | 已加载技能 |
+| `/tasks` | 任务列表 |
+| `/stats` | 会话统计 + 工具耗时 |
+| `/memories` | 记忆摘要 |
+| `/profile` | 用户画像 |
+| `/think` | 上次推理过程 |
+| `/save` | 导出对话 |
+| `/clear` | 清空对话 |
+| `/exit` | 退出 |
 
 ---
 
 ## ⚙️ 配置
 
-编辑 `config.json`（仅需填写 `api_key` 即可运行）：
+`config.json` 主要配置项：
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `api_key` | API Key（DeepSeek/OpenAI 兼容） | `sk-your-key` |
+| `api_key` | API Key | — |
 | `base_url` | API 端点 | `https://api.deepseek.com` |
 | `model_name` | 模型名称 | `deepseek-chat` |
-| `enable_gui_auto` | GUI 自动化开关 | `false` |
+| `permission_mode` | 权限模式 | `auto` |
+| `enable_gui_auto` | GUI 自动化 | `false` |
+| `enable_browser_auto` | 浏览器自动化 | `false` |
 | `enable_voice` | 语音输入 | `true` |
 | `enable_tts` | 语音朗读 | `true` |
-| `local_model` | 本地模型模式（无需 API Key） | `false` |
-| `tavily_api_key` | Tavily 搜索密钥（可选） | `""` |
-
-> 参考 `config.example.json` 获取完整模板。
+| `local_model` | 本地模型 | `false` |
 
 ---
 
-## 🧰 内置工具 (50+ 个)
+## 📦 技术栈
 
-### 🖱 GUI 自动化
-`gui_click` `gui_type` `gui_move` `gui_hotkey` `gui_press` `window_focus` `find_on_screen`
-
-### 🌐 浏览器控制
-`browser_open` `browser_click` `browser_type` `browser_screenshot` `browser_close`
-
-### 📂 文件 & 命令
-`execute_command` `read_file` `write_file` `list_files` `search_files` `search_content`
-
-### 📊 办公文档
-`read_excel` `write_excel` `read_word` `write_word` `take_screenshot` `ocr_image`
-
-### 🔗 网络 & 搜索
-`web_fetch` `read_webpage` `web_search` `get_weather` `get_location`
-
-### 💻 开发 & 代码
-`git_status` `git_diff` `git_log` `git_blame` `go_to_definition` `find_references` `analyze_image` `capture_camera` `execute_python`
-
-### 🧩 技能 & 调度
-`load_skill` `create_skill` `edit_skill` `list_skills` `load_md_skill` `list_md_skills` `add_task` `list_tasks` `remove_task`
-
-### ⚡ 其他
-`get_system_info` `speak_text` `recall_conversation` `update_profile`
+| 层 | 技术 |
+|----|------|
+| 编排 | Python 3.12+ asyncio |
+| 性能 | Rust (PyO3) — ripgrep 搜索 / diff 应用 / 文件遍历 |
+| LLM | DeepSeek / OpenAI 兼容 / Anthropic 兼容 / Ollama / LM Studio |
+| UI | Rich (流式 Markdown + 语法高亮 + diff 着色) |
+| 记忆 | SQLite + FTS5 全文检索 |
+| 语音 | Whisper / Vosk / Sherpa-ONNX |
+| TTS | Windows SAPI |
 
 ---
 
-## ⌨️ 内置命令
+## 🧪 测试
 
-| 命令 | 功能 |
-|------|------|
-| `/help` | 显示帮助 |
-| `/voice` | 进入语音输入模式 |
-| `/config` | 查看/修改配置 |
-| `/skills` | 查看已加载技能 |
-| `/memories` | 查看记忆摘要 |
-| `/tasks` | 管理定时任务 |
-| `/save` | 导出对话记录 |
-| `/clear` | 清空当前对话 |
-| `/stats` | 会话统计信息 |
-| `/think` | 查看上次推理过程 |
+```bash
+# 核心测试
+pytest tests/test_errors.py tests/test_feature_flags.py tests/test_providers.py tests/test_tools.py
+
+# 安全测试
+pytest tests/test_security.py
+
+# 全部测试
+pytest tests/ -v
+```
 
 ---
 
-## 📦 依赖
-
-| 包 | 用途 | 必选 |
-|----|------|------|
-| `openai` `tenacity` `rich` `requests` | LLM 通信、UI、网络 | ✅ |
-| `pyautogui` `pyperclip` `pygetwindow` | GUI 自动化 | ✅ |
-| `Pillow` `mss` `rapidocr-onnxruntime` | 截图 + OCR | ✅ |
-| `openpyxl` `python-docx` | 办公文档 | ✅ |
-| `beautifulsoup4` | 网页解析 | ✅ |
-| `faster-whisper` `sounddevice` | 语音识别 | 🟡 可选 |
-| `pywin32` `pystray` | TTS + 系统托盘 | 🟡 可选 |
-| `playwright` | 浏览器自动化 | 🟡 可选 |
-
----
-
-## 📄 开源协议
+## 📄 许可证
 
 [MIT License](LICENSE)

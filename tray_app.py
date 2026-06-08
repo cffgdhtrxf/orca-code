@@ -20,7 +20,7 @@ except ImportError:
     HAS_TRAY = False
     print("[提示] 系统托盘需要: pip install pystray Pillow")
     print("[提示] 直接启动 Orca Code...")
-    subprocess.run([sys.executable, str(SCRIPT_DIR / "ultimate_agent.py")])
+    subprocess.run([sys.executable, str(SCRIPT_DIR / "orca_code.py")])
     sys.exit(0)
 
 # ---- Global state ----
@@ -85,7 +85,7 @@ def start_agent():
         try:
             creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
             _agent_process = subprocess.Popen(
-                [sys.executable, str(SCRIPT_DIR / "ultimate_agent.py")],
+                [sys.executable, str(SCRIPT_DIR / "orca_code.py")],
                 cwd=str(SCRIPT_DIR),
                 creationflags=creationflags,
             )
@@ -178,7 +178,7 @@ def main():
 
     # Create tray icon
     icon = pystray.Icon(
-        "ultimate_agent",
+        "orca_code",
         _create_icon(),
         "Orca Code",
         menu=pystray.Menu(

@@ -9,4 +9,4 @@ if [ ! -f ".venv/bin/python" ]; then
 fi
 echo
 echo "Starting Orca Code..."
-.venv/bin/python ultimate_agent.py
+.venv/bin/python orca_code.py

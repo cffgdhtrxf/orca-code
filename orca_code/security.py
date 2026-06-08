@@ -29,7 +29,7 @@ from typing import Optional, Tuple
 
 _ALWAYS_BLOCKED = [
     # Disk destruction
-    (r'(?i)\bformat\b', "Disk format command"),
+    (r'(?i)(?:^|\s)format\s', "Disk format command"),
     (r'(?i)\bdd\s+if=.*of=/dev', "Raw device write"),
     (r'(?i)\bmkfs\.', "Filesystem creation (mkfs)"),
 
