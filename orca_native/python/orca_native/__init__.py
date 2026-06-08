@@ -21,13 +21,38 @@ from typing import Optional
 
 # ── Try to load the compiled Rust module ────────────────────────────────────
 _HAS_NATIVE = False
-try:
-    from orca_native import search_content as _native_search
-    from orca_native import apply_diff as _native_diff
-    from orca_native import walk_files as _native_walk
-    _HAS_NATIVE = True
-except ImportError:
-    pass
+# The Rust lib exports PyInit_orca_native, but the Python package is also
+# named orca_native. We load the .pyd via importlib and stash it under a
+# private name to avoid the conflict.
+_RUST_LIB = Path(__file__).parent.parent.parent / "target" / "release" / "orca_native.pyd"
+if not _RUST_LIB.exists():
+    _RUST_LIB = Path(__file__).parent.parent.parent / "target" / "release" / "orca_native.so"
+if not _RUST_LIB.exists():
+    _RUST_LIB = Path(__file__).parent.parent.parent / "target" / "release" / "orca_native.dll"
+
+if _RUST_LIB.exists():
+    try:
+        import importlib.util
+        import sys as _sys
+        # Module name MUST be 'orca_native' to match PyInit_orca_native export.
+        # But exec_module() adds it to sys.modules, shadowing this package.
+        # Workaround: save our package ref, let loader run, then restore.
+        _pkg = _sys.modules.get(__name__)
+        spec = importlib.util.spec_from_file_location(
+            "orca_native", str(_RUST_LIB)
+        )
+        if spec and spec.loader:
+            _native_rs = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(_native_rs)
+            _native_search = _native_rs.search_content
+            _native_diff = _native_rs.apply_diff
+            _native_walk = _native_rs.walk_files
+            # Restore this package in sys.modules (loader overwrote it)
+            if _pkg is not None:
+                _sys.modules[__name__] = _pkg
+            _HAS_NATIVE = True
+    except Exception:
+        pass
 
 
 # ── Python fallback: search_content ──────────────────────────────────────────
