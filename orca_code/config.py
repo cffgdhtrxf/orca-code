@@ -10,20 +10,19 @@ from __future__ import annotations
 
 import os
 import sys
-import json
-import platform
-import logging
 from pathlib import Path
-from typing import Any, Dict
-
-# ─── Pure config loading (from config_loader) ────────────────────────────────
-from orca_code.infrastructure.config_loader import (
-    DEFAULT_CONFIG, load_config, mask_key,
-)
 
 # Console (lightweight — Rich console creation is cheap)
 from rich.console import Console
-console = Console()
+
+# ─── Pure config loading (from config_loader) ────────────────────────────────
+from orca_code.infrastructure.config_loader import (
+    load_config,
+)
+
+# Force ANSI truecolor mode so emoji and gradient colors work on Windows.
+# Legacy Win32 console API is limited to the system code page (e.g. GBK).
+console = Console(force_terminal=True, color_system="truecolor")
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent.parent.resolve()
@@ -45,13 +44,18 @@ for d in (SAVE_DIR, TEMP_DIR, SKILLS_DIR, OUTPUT_DIR, LOGS_DIR):
 CONFIG = load_config(CONFIG_JSON, SCRIPT_DIR / "配置文件.txt", SCRIPT_DIR)
 
 # ─── Simple globals (extracted immediately — fast) ───────────────────────────
-API_KEY: str = CONFIG["api_key"]
+# SecretStore resolves API keys via: env var > keychain > encrypted file > config
+from orca_code.infrastructure.secrets import SecretStore
+
+_secret_store = SecretStore()
+
+API_KEY: str = _secret_store.resolve("api_key", CONFIG["api_key"])
 BASE_URL: str = CONFIG["base_url"]
 MODEL: str = CONFIG["model_name"]
 MAX_OUTPUT_TOKENS: int = int(CONFIG["max_output_tokens"])
 ENABLE_THINK_MODE: bool = str(CONFIG["enable_think_mode"]).lower() == "true"
 SILENT_CMD: bool = str(CONFIG["silent_cmd"]).lower() == "true"
-TAVILY_API_KEY: str = CONFIG["tavily_api_key"]
+TAVILY_API_KEY: str = _secret_store.resolve("tavily_api_key", CONFIG["tavily_api_key"])
 USER_CITY: str = CONFIG["user_city"]
 AUTO_INSTALL_DEPS: bool = str(CONFIG["auto_install_deps"]).lower() == "true"
 ENABLE_GUI_AUTO: bool = str(CONFIG["enable_gui_auto"]).lower() == "true"
@@ -67,7 +71,7 @@ ENABLE_TTS: bool = str(CONFIG.get("enable_tts", True)).lower() == "true"
 ENABLE_VOICE: bool = str(CONFIG.get("enable_voice", True)).lower() == "true"
 VISION_MODEL: str = CONFIG.get("vision_model", "")
 VISION_BASE_URL: str = CONFIG.get("vision_base_url", "") or BASE_URL
-VISION_API_KEY: str = CONFIG.get("vision_api_key", "") or API_KEY
+VISION_API_KEY: str = _secret_store.resolve("vision_api_key", CONFIG.get("vision_api_key", "")) or API_KEY
 
 # Model family flags
 IS_DEEPSEEK: bool = "deepseek" in MODEL.lower() or "deepseek" in BASE_URL.lower()
@@ -96,8 +100,9 @@ except Exception:
 
 # Permission
 from orca_code.permissions import PermissionMode
+
 PERMISSION_MODE = PermissionMode(CONFIG.get("permission_mode", "auto"))
-PERMISSION_RULES: Dict[str, str] = CONFIG.get("permission_rules", {})
+PERMISSION_RULES: dict[str, str] = CONFIG.get("permission_rules", {})
 
 # ─── Optional dependency detection (fast try/except at module level) ─────────
 
@@ -125,7 +130,7 @@ else:
 try:
     import torch
     import torchaudio
-    from transformers import BertTokenizer, BertModel
+    from transformers import BertModel, BertTokenizer
     HAS_BERT_VITS2 = True
 except ImportError:
     HAS_BERT_VITS2 = False
@@ -158,7 +163,11 @@ _client = None
 _mem_mgr = None
 _perm_store = None
 # search_cache, _balance_cache, ensure_pkg, get_api_balance → infrastructure/helpers
-from orca_code.infrastructure.helpers import search_cache, ensure_pkg, get_api_balance  # noqa: E402, F401
+from orca_code.infrastructure.helpers import (  # noqa: E402, F401
+    ensure_pkg,
+    get_api_balance,
+    search_cache,
+)
 
 _sensitive_keys = {"api_key", "memory_api_key", "tavily_api_key"}
 
@@ -167,7 +176,13 @@ def _get_client():
     global _client
     if _client is None:
         from openai import OpenAI
-        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        import httpx as _httpx
+        # ── P2-56: Proxy support ─────────────────────────────────────────
+        _proxy = CONFIG.get("proxy") or CONFIG.get("http_proxy") or ""
+        _http_client = None
+        if _proxy:
+            _http_client = _httpx.Client(proxy=_proxy)
+        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL, http_client=_http_client)
     return _client
 
 

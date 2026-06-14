@@ -7,10 +7,7 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import time
-import threading
-from pathlib import Path
 
 from flask import Flask, jsonify, render_template_string
 

@@ -91,3 +91,129 @@ packages = [
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Ruff — Fast Python linter & formatter
+# ═══════════════════════════════════════════════════════════════════════════════
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "orca_code/orca_native/*",
+    ".venv/*",
+    "__pycache__/*",
+    "models/*",
+    "vosk_models/*",
+    "sherpa_onnx_models/*",
+]
+
+[tool.ruff.lint]
+select = [
+    # pyflakes + pep8 (fundamental correctness)
+    "E", "F", "W",
+    # pep8-naming
+    "N",
+    # pyupgrade (modern Python syntax)
+    "UP",
+    # flake8-bugbear (common bugs)
+    "B",
+    # flake8-simplify (code simplification)
+    "SIM",
+    # flake8-type-checking (move imports to TYPE_CHECKING)
+    "TCH",
+    # flake8-comprehensions (simplify list/dict/set comps)
+    "C4",
+    # isort (import sorting)
+    "I",
+    # ruff-specific
+    "RUF",
+]
+ignore = [
+    # Allow long lines in some contexts (handled by formatter)
+    "E501",
+    # Allow abstract method bodies to raise NotImplementedError
+    "B027",
+    # Allow variable naming like 'e' for exceptions
+    "N818",
+]
+# Allow unused imports in __init__.py (re-exports)
+per-file-ignores = { "__init__.py" = ["F401"] }
+
+[tool.ruff.lint.isort]
+known-first-party = ["orca_code", "orca_native"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Mypy — Static type checking
+# ═══════════════════════════════════════════════════════════════════════════════
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+strict_equality = true
+# Relaxations for gradual typing adoption:
+# disallow_incomplete_defs = true  # enable once all functions are typed
+# disallow_untyped_decorators = true  # enable once decorators are typed
+
+[[tool.mypy.overrides]]
+module = [
+    "pyautogui",
+    "pygetwindow",
+    "pyperclip",
+    "mss",
+    "rapidocr_onnxruntime",
+    "playwright.*",
+    "openpyxl",
+    "docx",
+    "vosk",
+    "sounddevice",
+    "win32com.*",
+    "cv2",
+    "torch",
+    "torchaudio",
+    "transformers",
+    "PIL.*",
+]
+ignore_missing_imports = true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pytest + Coverage
+# ═══════════════════════════════════════════════════════════════════════════════
+
+[tool.coverage.run]
+source = ["orca_code"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/orca_native/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+precision = 1
+show_missing = true
+skip_covered = false
+
+# Minimum coverage thresholds (to be raised over time)
+[tool.coverage.report.fail_under]
+total = 70  # target: 80%+ by Month 2

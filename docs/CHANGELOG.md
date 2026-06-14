@@ -1,5 +1,39 @@
 # Changelog
 
+## v5.2.0 (2026-06-09) — TUI 生产就绪
+
+### TypeScript TUI (orca-ts/) — FullscreenLayout 架构
+- ✅ **FullscreenLayout 模式** (源自 Claude Code) — `flexShrink={0}` 固定 banner/输入栏, `flexGrow={1}` 滚动区吸收剩余空间, `overflow="hidden"` 溢出裁剪
+- ✅ **Welcome 页布局** — `<Box flexGrow={1} />` 占位将输入栏推至底部
+- ✅ **消息顺序修正 (chronological)** — `flushFinalToMessages` 拆分为两条消息: 思考 (插在 user 后、tools 前) + 回答 (追加在 tools 后)
+- ✅ 显示: `💭思考` → `⚡工具` → `●回复`
+
+### 流式与工具执行
+- ✅ `tool_executing` 携带 `tools: string[]` — TUI 显示 `⚡ search_web, read_webpage …`
+- ✅ `tool_executing` 时清空 `streamTextRef` (每个 agent-loop turn 独立)
+- ✅ 流式缓冲分离: `streamReasoningRef` / `streamTextRef` 独立更新
+- ✅ Spinner 动画 80ms 切换 + 计时 `[Ns]`
+- ✅ Token 显示: 0/0 时隐藏, 仅 >0 时显示 `↑Nt ↓Nt`
+
+### 输入修复
+- ✅ **退格修复** — Windows 终端发送 `\x7f` (DEL), Ink 映射为 `key.delete`, handler 同时检查 `backspace` + `delete` + 原始字节
+- ✅ **IME 光标** — `\x1b[?25h` (DECTCEM) 显示终端光标, IME 组合窗口正确定位
+- ✅ **稳定 handler** — `useCallback([], [])` + `useRef` 防止 Ink listener churn
+
+### Banner 修复
+- ✅ 渐变 banner 从 468 个 `<Text>` 简化到 6 个 (每行一个), 预计算 `BANNER_COLORS` 数组
+- ✅ `v5.2` 版本号不再合并到 banner 末尾行
+
+### 后端
+- ✅ **Agent loop** (server.py) — 模型调用工具 → 结果反馈 → 重复 (max 10 turns)
+- ✅ **YOLO 强制** — server 模式下设置 `PERMISSION_MODE = PermissionMode.YOLO`, 避免 `msvcrt.getwch()` 阻塞
+- ✅ **健康检查** — `/v1/health` 端点 (修复自 `/health`)
+- ✅ **一键启动** — `start_all.bat` 带 PowerShell 健康检查
+
+### 参考架构
+- ✅ 研究 Claude Code: `FullscreenLayout.tsx` (flex layout), `store.ts` (external store), `ScrollBox.tsx`
+- ✅ 研究 oh-my-pi: `tui.ts` (custom renderer), `scroll-view.ts`
+
 ## v5.1.0 (2026-06-08) — 生产就绪
 
 ### 代码审查修复

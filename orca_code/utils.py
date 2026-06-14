@@ -1,9 +1,12 @@
 """orca_code.utils — Encoding, paths, tokens, cleanup."""
 
-import os, sys, re, json, tempfile, shutil, time
+import json
+import re
+import shutil
 from pathlib import Path
-from typing import Any, Dict, Tuple
-from orca_code.config import SCRIPT_DIR, TEMP_DIR, WORKING_DIR, IS_DEEPSEEK
+
+from orca_code.config import IS_DEEPSEEK, SCRIPT_DIR, TEMP_DIR, WORKING_DIR
+
 
 def _detect_encoding(path: str) -> str:
     p = Path(path)
@@ -139,9 +142,7 @@ def fix_truncated_json(json_str: str):
             continue
         if ch in '{[':
             stack.append(ch)
-        elif ch == '}' and stack and stack[-1] == '{':
-            stack.pop()
-        elif ch == ']' and stack and stack[-1] == '[':
+        elif ch == '}' and stack and stack[-1] == '{' or ch == ']' and stack and stack[-1] == '[':
             stack.pop()
     if in_string:
         fixed += '"'
@@ -168,6 +169,15 @@ def _sanitize_for_save(obj):
     elif isinstance(obj, list):
         return [_sanitize_for_save(v) for v in obj]
     return obj
+def _sanitize_surrogates(text: str, replacement: str = "\ufffd") -> str:
+    """Replace lone surrogate characters that can't be encoded to UTF-8.
+
+    Surrogates (U+D800-U+DFFF) are invalid in UTF-8 and cause
+    "'utf-8' codec can't encode character" errors when writing to stdout.
+    """
+    return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+
+
 def _sanitize_ansi(text: str) -> str:
     """[Fix 4] Remove or escape ANSI escape sequences from text."""
     return re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)

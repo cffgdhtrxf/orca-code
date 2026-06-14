@@ -2,12 +2,8 @@
 Security & stability tests for Orca Code.
 Covers fatal and warning-level issues identified in code review.
 """
-import pytest
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+import pytest
 
 # ============================================================
 # FATAL: Skill Sandbox Escape Tests
@@ -240,7 +236,6 @@ class TestConfigTypeCoercion:
 
     def test_int_keys_coerced_correctly(self):
         """Integer config keys should be converted to int."""
-        from orca_code import _load_txt_config, CONFIG_TXT
         # We can't easily mock CONFIG_TXT without patching, so test the coercion logic directly
         # by constructing a cfg dict as _load_txt_config would return
         cfg = {"max_workers": "5", "cmd_timeout": "120", "keep_last_rounds": "20"}

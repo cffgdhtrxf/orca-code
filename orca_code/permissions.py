@@ -10,10 +10,11 @@ Tools self-declare their risk level. User rules in config.json override.
 
 from __future__ import annotations
 
+import csv
 import json
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional
 
 
 class RiskLevel(Enum):
@@ -40,7 +41,7 @@ class PermissionDecision(Enum):
 # Every tool must be listed here with its risk level.
 # Tools NOT listed default to EXEC (safe default).
 
-TOOL_RISK: Dict[str, RiskLevel] = {
+TOOL_RISK: dict[str, RiskLevel] = {
     # ---- READ ----
     "read_file":          RiskLevel.READ,
     "list_files":         RiskLevel.READ,
@@ -104,6 +105,10 @@ TOOL_RISK: Dict[str, RiskLevel] = {
     "agent_open":         RiskLevel.EXEC,
     "agent_eval":         RiskLevel.READ,
     "agent_close":        RiskLevel.WRITE,
+    # ---- Coordinator (multi-agent) ----
+    "coordinator_parallel":  RiskLevel.EXEC,
+    "coordinator_pipeline":  RiskLevel.EXEC,
+    "coordinator_judge":     RiskLevel.EXEC,
     # ---- LSP ----
     "lsp_diagnostics":    RiskLevel.READ,
     "lsp_references":     RiskLevel.READ,
@@ -117,11 +122,11 @@ class PermissionStore:
     Stores to ~/.orca_permissions.json so choices survive restarts
     when the user selects 'always allow'."""
 
-    def __init__(self, store_path: Optional[Path] = None):
+    def __init__(self, store_path: Path | None = None):
         if store_path is None:
             store_path = Path.home() / ".orca_permissions.json"
         self._path = store_path
-        self._session: Dict[str, str] = {}  # tool_name -> "allow"|"deny"
+        self._session: dict[str, str] = {}  # tool_name -> "allow"|"deny"
         self._load()
 
     def _load(self):
@@ -142,7 +147,7 @@ class PermissionStore:
         except Exception:
             pass
 
-    def get(self, tool_name: str) -> Optional[str]:
+    def get(self, tool_name: str) -> str | None:
         """Return 'allow', 'deny', or None if no saved choice."""
         return self._session.get(tool_name)
 
@@ -151,7 +156,7 @@ class PermissionStore:
         self._session[tool_name] = decision
         self._save()
 
-    def clear(self, tool_name: Optional[str] = None):
+    def clear(self, tool_name: str | None = None):
         """Clear saved choices. If tool_name is None, clear all."""
         if tool_name is None:
             self._session.clear()
@@ -161,7 +166,7 @@ class PermissionStore:
 
 
 # Global permission store instance (initialized in config.py)
-perm_store: Optional[PermissionStore] = None
+perm_store: PermissionStore | None = None
 
 
 def get_risk(tool_name: str) -> RiskLevel:
@@ -172,7 +177,7 @@ def get_risk(tool_name: str) -> RiskLevel:
 def check_permission(
     tool_name: str,
     mode: PermissionMode,
-    user_rules: Optional[Dict[str, str]] = None
+    user_rules: dict[str, str] | None = None
 ) -> PermissionDecision:
     """Check whether a tool call should be allowed, denied, or prompted.
 
@@ -273,7 +278,8 @@ def prompt_user_for_permission(tool_name: str, args: dict, risk: RiskLevel) -> s
                     print("cancelled")
                     return ""
         else:
-            import termios, tty
+            import termios
+            import tty
             fd = _sys.stdin.fileno()
             old = termios.tcgetattr(fd)
             try:
@@ -298,7 +304,7 @@ def prompt_user_for_permission(tool_name: str, args: dict, risk: RiskLevel) -> s
 
 
 def resolve_permission(tool_name: str, args: dict, mode: PermissionMode,
-                       user_rules: Optional[Dict[str, str]] = None) -> bool:
+                       user_rules: dict[str, str] | None = None) -> bool:
     """Full permission resolution with interactive prompt if needed.
 
     Returns True if the tool call is allowed, False if denied.
@@ -309,8 +315,10 @@ def resolve_permission(tool_name: str, args: dict, mode: PermissionMode,
     decision = check_permission(tool_name, mode, user_rules)
 
     if decision == PermissionDecision.ALLOW:
+        _audit_log.record(tool_name, get_risk(tool_name), "allow", mode, args)
         return True
     elif decision == PermissionDecision.DENY:
+        _audit_log.record(tool_name, get_risk(tool_name), "deny", mode, args)
         return False
 
     # ASK — show interactive prompt
@@ -320,9 +328,138 @@ def resolve_permission(tool_name: str, args: dict, mode: PermissionMode,
     if choice == "always_allow":
         if perm_store is not None:
             perm_store.set(tool_name, "allow")
+        _audit_log.record(tool_name, risk, "always_allow", mode, args)
         return True
     elif choice == "allow":
+        _audit_log.record(tool_name, risk, "allow", mode, args)
         return True
     else:
         # deny or cancelled
+        _audit_log.record(tool_name, risk, "deny", mode, args)
         return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Permission Audit Log
+# Append-only CSV audit trail of all permission decisions.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class PermissionAuditLog:
+    """Append-only CSV audit trail of all permission decisions.
+
+    Records every tool permission check with timestamp, tool name,
+    risk level, decision, permission mode, and argument preview.
+
+    Usage:
+        audit = PermissionAuditLog(Path.home() / ".orca" / "permission_audit.csv")
+        audit.record("execute_command", RiskLevel.EXEC, "allow", PermissionMode.AUTO,
+                     {"command": "git status"})
+    """
+
+    HEADERS = ["timestamp", "tool_name", "risk", "decision", "mode", "args_preview"]
+
+    def __init__(self, log_path: Path | None = None):
+        if log_path is None:
+            log_path = Path.home() / ".orca" / "permission_audit.csv"
+        self._path = log_path
+        self._ensure_header()
+
+    def _ensure_header(self):
+        if not self._path.exists():
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._path, "w", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow(self.HEADERS)
+
+    def record(
+        self,
+        tool_name: str,
+        risk: RiskLevel,
+        decision: str,  # "allow", "deny", "always_allow"
+        mode: PermissionMode,
+        args: dict,
+    ):
+        """Record a permission decision.
+
+        Args:
+            tool_name: Name of the tool being checked.
+            risk: RiskLevel of the tool.
+            decision: "allow", "deny", or "always_allow".
+            mode: Current PermissionMode.
+            args: Tool arguments (sanitized before storage).
+        """
+        # Sanitize args: truncate long values, mask potential secrets
+        safe_args = {}
+        for k, v in args.items():
+            if isinstance(v, str):
+                # Mask API keys / tokens that might appear in args
+                if any(marker in k.lower() for marker in ("key", "token", "secret", "password", "passwd")):
+                    safe_args[k] = "***REDACTED***"
+                elif len(v) > 200:
+                    safe_args[k] = v[:197] + "..."
+                else:
+                    safe_args[k] = v
+            else:
+                safe_args[k] = v
+
+        args_preview = json.dumps(safe_args, ensure_ascii=False)
+        if len(args_preview) > 300:
+            args_preview = args_preview[:297] + "..."
+
+        row = [
+            datetime.now(UTC).isoformat(),
+            tool_name,
+            risk.value,
+            decision,
+            mode.value,
+            args_preview,
+        ]
+        try:
+            with open(self._path, "a", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow(row)
+        except Exception:
+            pass  # Never let audit logging crash tool execution
+
+    def tail(self, n: int = 20) -> list[dict]:
+        """Return the last n audit entries as a list of dicts."""
+        if not self._path.exists():
+            return []
+        try:
+            with open(self._path, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            return rows[-n:] if len(rows) > n else rows
+        except Exception:
+            return []
+
+    def stats(self) -> dict:
+        """Return audit statistics: counts by tool, risk, decision."""
+        if not self._path.exists():
+            return {}
+        try:
+            with open(self._path, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+        except Exception:
+            return {}
+
+        tools = {}
+        risks = {}
+        decisions = {}
+        for row in rows:
+            t = row.get("tool_name", "unknown")
+            r = row.get("risk", "unknown")
+            d = row.get("decision", "unknown")
+            tools[t] = tools.get(t, 0) + 1
+            risks[r] = risks.get(r, 0) + 1
+            decisions[d] = decisions.get(d, 0) + 1
+
+        return {
+            "total": len(rows),
+            "by_tool": tools,
+            "by_risk": risks,
+            "by_decision": decisions,
+        }
+
+
+# Global audit log instance (used by resolve_permission)
+_audit_log = PermissionAuditLog()

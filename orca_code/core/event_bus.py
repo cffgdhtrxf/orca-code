@@ -13,8 +13,9 @@ Event types:
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Dict, List
+from typing import Any
 
 
 class EventType(Enum):
@@ -94,7 +95,7 @@ class EventBus:
     """
 
     def __init__(self):
-        self._subscribers: Dict[EventType, List[EventCallback]] = {
+        self._subscribers: dict[EventType, list[EventCallback]] = {
             et: [] for et in EventType
         }
         self._lock = threading.Lock()
@@ -149,7 +150,7 @@ class EventBus:
                 self._subscribers[et].clear()
 
     @property
-    def subscriber_count(self) -> Dict[EventType, int]:
+    def subscriber_count(self) -> dict[EventType, int]:
         """Return a mapping of event types to subscriber counts (for debugging)."""
         with self._lock:
             return {et: len(subs) for et, subs in self._subscribers.items()}

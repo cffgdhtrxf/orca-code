@@ -14,8 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Optional, Dict
-
+from typing import Any
 
 # ─── Stream event types ──────────────────────────────────────────────────────
 
@@ -53,7 +52,7 @@ class ToolDefinition:
     """Provider-agnostic tool definition (JSON Schema)."""
     name: str
     description: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,21 +64,21 @@ class StreamRequestInput:
     base_url: str
     api_key: str
     model_id: str
-    messages: List[Dict[str, Any]]         # OpenAI-format message history
+    messages: list[dict[str, Any]]         # OpenAI-format message history
     system_prompt: str = ""
-    tools: Optional[List[ToolDefinition]] = None
+    tools: list[ToolDefinition] | None = None
     max_output_tokens: int = 8192
     temperature: float = 0.7
     thinking_enabled: bool = False
     reasoning_effort: str = "high"          # "low" | "medium" | "high" (DeepSeek)
-    extra_body: Optional[Dict[str, Any]] = None  # Provider-specific overrides
+    extra_body: dict[str, Any] | None = None  # Provider-specific overrides
 
 
 @dataclass
 class ProviderRequest:
     """Built HTTP request ready for fetch/requests."""
     url: str
-    headers: Dict[str, str]
+    headers: dict[str, str]
     body: str  # JSON-encoded request body
 
 
@@ -110,7 +109,7 @@ class ProviderAdapter(ABC):
         ...
 
     @abstractmethod
-    def parse_stream_line(self, json_line: str) -> List[StreamEvent]:
+    def parse_stream_line(self, json_line: str) -> list[StreamEvent]:
         """Parse a single SSE data line into zero or more StreamEvents.
 
         Args:

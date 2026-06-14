@@ -12,13 +12,10 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 from .base import ProviderAdapter
 
-
 # Global adapter registry
-_registry: Dict[str, ProviderAdapter] = {}
+_registry: dict[str, ProviderAdapter] = {}
 _registry_lock = __import__('threading').Lock()
 
 
@@ -65,7 +62,7 @@ def get_adapter(provider_type: str) -> ProviderAdapter:
         return _registry[provider_type]
 
 
-def list_providers() -> List[Dict[str, str]]:
+def list_providers() -> list[dict[str, str]]:
     """Return a list of all registered providers with metadata.
 
     Returns:
@@ -84,7 +81,7 @@ def list_providers() -> List[Dict[str, str]]:
         ]
 
 
-def autodetect_provider(base_url: str, model_name: str) -> Optional[str]:
+def autodetect_provider(base_url: str, model_name: str) -> str | None:
     """Auto-detect the provider type from base_url and model_name.
 
     Used when config does not explicitly declare a provider_type.

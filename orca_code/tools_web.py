@@ -1,12 +1,24 @@
 
-import os, sys, json, re, subprocess, logging
-import urllib.request, urllib.error, urllib.parse
 import hashlib as _hashlib
-from pathlib import Path
-from typing import Optional, Dict, List, Tuple
-from orca_code.config import (CONFIG, TAVILY_API_KEY, USER_CITY,
-    TERM_WIDTH, SCRIPT_DIR, search_cache, console)
-from orca_code.security import is_safe_url, _TEST_LOCATION_HASH
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from orca_code.config import (
+    SCRIPT_DIR,
+    TAVILY_API_KEY,
+    TERM_WIDTH,
+    USER_CITY,
+    console,
+    search_cache,
+)
+from orca_code.security import _TEST_LOCATION_HASH, is_safe_url
 
 """orca_code.tools_web — Web fetch, search, weather, location."""
 
@@ -53,7 +65,7 @@ def read_webpage(url: str) -> str:
     if len(text) > 8000:
         text = text[:8000] + "\n\n... (已截断)"
     return text if text else "未能提取到有效文本内容"
-def _optimize_search_query(query: str) -> List[str]:
+def _optimize_search_query(query: str) -> list[str]:
     results = []
     if any(kw in query for kw in ("天气", "weather", "气温", "温度")):
         for pat in [r'([一-鿿a-zA-Z\s]+?)(?:天气|气温|温度|预报|weather)']:
@@ -66,7 +78,7 @@ def _optimize_search_query(query: str) -> List[str]:
     if query not in results:
         results.append(query)
     return results[:3]
-def _score_results(results: List[Dict], query: str) -> None:
+def _score_results(results: list[dict], query: str) -> None:
     auth = {".gov.cn": 15, ".edu.cn": 12, "weather.com.cn": 15, "bbc.com": 10,
             "reuters.com": 10, "accuweather.com": 12, "weather.com": 12}
     qkw = set(query.lower().split())
@@ -78,7 +90,7 @@ def _score_results(results: List[Dict], query: str) -> None:
                 break
         title = r.get("title", "").lower()
         r["score"] = r.get("score", 0) + len(qkw & set(title.split())) * 2
-def _search_with_tavily(query: str, max_results: int = 10, topic: str = "general", days: int = 0) -> List[Dict]:
+def _search_with_tavily(query: str, max_results: int = 10, topic: str = "general", days: int = 0) -> list[dict]:
     ck = f"tavily:{query}:{max_results}:{topic}:{days}"
     cached = search_cache.get(ck)
     if cached is not None:
@@ -127,7 +139,7 @@ def _search_with_tavily(query: str, max_results: int = 10, topic: str = "general
             seen.add(x["href"])
             unique.append(x)
     final = unique[:max_results]
-    search_cache.set(ck, final)
+    search_cache[ck] = final
     return final
 def _ddg_fallback(query: str) -> str:
     url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
@@ -185,7 +197,7 @@ def get_weather(location: str) -> str:
         return "\n".join(lines)
     except Exception as e:
         return f"错误: 天气查询失败 - {e}"
-def _get_system_location() -> Optional[Dict]:
+def _get_system_location() -> dict | None:
     if sys.platform != "win32":
         return None
     script = SCRIPT_DIR / "test_location.ps1"
@@ -221,7 +233,7 @@ def _get_system_location() -> Optional[Dict]:
     except Exception as e:
         logging.debug("_get_system_location unexpected error: %s", e)
     return None
-def _match_city_by_coords(lat: float, lon: float) -> Tuple[str, str]:
+def _match_city_by_coords(lat: float, lon: float) -> tuple[str, str]:
     cities = [
         (23.0, 23.5, 113.0, 114.0, "广州", "广东"),
         (22.5, 22.8, 114.0, 114.2, "深圳", "广东"),

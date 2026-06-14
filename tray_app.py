@@ -2,11 +2,19 @@
 tray_app.py — System tray launcher for Orca Code.
 Right-click tray icon to start/stop the agent.
 Win+Shift+A global hotkey to toggle visibility.
+
+Features:
+  - Start/Stop agent from tray menu
+  - Auto-start with Windows (toggle via tray menu)
+  - Open Dashboard in browser
+  - Update check notification
+  - Win+Shift+A global hotkey
 """
 import sys
 import os
 import subprocess
 import threading
+import webbrowser
 import ctypes
 from pathlib import Path
 
@@ -26,6 +34,7 @@ except ImportError:
 # ---- Global state ----
 _agent_process = None
 _agent_lock = threading.Lock()
+_icon_ref = None  # For notifications from background threads
 
 # ---- Console window helpers ----
 def _get_console_window():
@@ -115,7 +124,68 @@ def toggle_agent():
         start_agent()
 
 
-# ---- Tray menu ----
+# ---- Auto-start with Windows ----
+_AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_AUTOSTART_NAME = "OrcaCode"
+
+
+def _is_autostart_enabled() -> bool:
+    """Check if auto-start with Windows is enabled."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _AUTOSTART_KEY, 0, winreg.KEY_READ)
+        try:
+            winreg.QueryValueEx(key, _AUTOSTART_NAME)
+            return True
+        except FileNotFoundError:
+            return False
+        finally:
+            winreg.CloseKey(key)
+    except Exception:
+        return False
+
+
+def _toggle_autostart(enable: bool):
+    """Enable or disable auto-start with Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _AUTOSTART_KEY, 0, winreg.KEY_SET_VALUE)
+        if enable:
+            tray_path = str(SCRIPT_DIR / "tray_app.py")
+            winreg.SetValueEx(key, _AUTOSTART_NAME, 0, winreg.REG_SZ,
+                              f'"{sys.executable}" "{tray_path}"')
+        else:
+            try:
+                winreg.DeleteValue(key, _AUTOSTART_NAME)
+            except FileNotFoundError:
+                pass
+        winreg.CloseKey(key)
+    except Exception:
+        pass
+
+
+# ---- Update check (background) ----
+def _check_update_background(icon):
+    """Check for updates in a background thread, notify if available."""
+    try:
+        from orca_code.infrastructure.updater import check_for_update
+        info = check_for_update()
+        if info:
+            icon.notify(
+                f"Orca Code v{info['version']} available!\n"
+                f"Current: v{info['current_version']}\n"
+                f"Run `orca --update` to upgrade.",
+                "Update Available"
+            )
+    except Exception:
+        pass
+
+
+# ---- Tray menu callbacks ----
 def _on_start(icon, item):
     msg = start_agent()
     icon.notify(msg, "Orca Code")
@@ -128,6 +198,25 @@ def _on_stop(icon, item):
 
 def _on_toggle(icon, item):
     toggle_agent()
+
+
+def _on_dashboard(icon, item):
+    """Open the web Dashboard in the default browser."""
+    webbrowser.open("http://localhost:8499")
+
+
+def _on_autostart(icon, item):
+    """Toggle auto-start with Windows."""
+    current = _is_autostart_enabled()
+    _toggle_autostart(not current)
+    state = "enabled" if not current else "disabled"
+    icon.notify(f"Auto-start {state}", "Orca Code")
+
+
+def _on_check_update(icon, item):
+    """Manually check for updates."""
+    threading.Thread(target=_check_update_background, args=(icon,), daemon=True).start()
+    icon.notify("Checking for updates...", "Orca Code")
 
 
 def _on_exit(icon, item):
@@ -149,7 +238,6 @@ def _setup_hotkey():
             return False
 
         def _poll():
-            import time
             msg = ctypes.wintypes.MSG()
             while True:
                 if ctypes.windll.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
@@ -168,6 +256,7 @@ def _setup_hotkey():
 
 # ---- Main ----
 def main():
+    global _icon_ref
     print("Starting Orca Code tray app...")
 
     # Auto-start agent on launch
@@ -175,6 +264,10 @@ def main():
 
     # Setup hotkey
     _setup_hotkey()
+
+    # Build autostart menu item with checkmark
+    autostart_enabled = _is_autostart_enabled()
+    autostart_label = f"{'✓' if autostart_enabled else '○'} Auto-start with Windows"
 
     # Create tray icon
     icon = pystray.Icon(
@@ -186,9 +279,19 @@ def main():
             pystray.MenuItem("Stop Agent", _on_stop),
             pystray.MenuItem("Toggle (Win+Shift+A)", _on_toggle),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Open Dashboard", _on_dashboard),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(autostart_label, _on_autostart),
+            pystray.MenuItem("Check for Updates", _on_check_update),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", _on_exit),
         ),
     )
+    _icon_ref = icon
+
+    # Background update check (5 min after startup, to not block launch)
+    threading.Timer(300, _check_update_background, args=[icon]).start()
+
     icon.run()
 
 

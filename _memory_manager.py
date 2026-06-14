@@ -265,6 +265,86 @@ class MemoryManager:
         self._conn.commit()
         return count
 
+    def search_hybrid(
+        self, query: str, limit: int = 5, graph_depth: int = 1
+    ) -> List[Dict]:
+        """Hybrid search: FTS5 + Knowledge Graph graph traversal.
+
+        Combines keyword search with entity-relation graph expansion.
+        When the knowledge graph is available, matched entities are expanded
+        to include neighboring concepts.
+
+        Args:
+            query: Search query.
+            limit: Max results from FTS5 search.
+            graph_depth: Graph traversal depth (1 = direct neighbors only).
+
+        Returns:
+            List of memory entries with optional graph context.
+        """
+        # Step 1: Standard FTS5 search
+        results = self.search_with_snippet(query, limit=limit)
+
+        # Step 2: Optionally expand with knowledge graph
+        try:
+            from orca_code.memory import KnowledgeGraph
+            kg_path = str(Path(self.db_path).parent / "knowledge_graph.db")
+            kg = KnowledgeGraph(kg_path)
+
+            if kg.entity_count > 0:
+                # Extract entities from the query
+                kg.auto_extract(query)
+
+                # Search KG for related entities
+                kg_results = kg.search_hybrid(query, limit=min(limit, 5), graph_depth=graph_depth)
+
+                if kg_results["total_nodes"] > 0:
+                    # Build graph context
+                    related_labels = []
+                    for node_id, node in kg_results.get("graph_results", [{}])[0].get("nodes", []):
+                        if isinstance(node, dict):
+                            related_labels.append(node.get("label", ""))
+
+                    if related_labels:
+                        graph_context = (
+                            f"[Knowledge Graph: found {kg_results['total_nodes']} related entities] "
+                            f"Related: {', '.join(related_labels[:10])}"
+                        )
+                        # Prepend graph context as a synthetic result
+                        results.insert(0, {
+                            "id": -1,
+                            "session_id": "kg",
+                            "turn_number": 0,
+                            "role": "system",
+                            "content": graph_context,
+                            "timestamp": datetime.now().isoformat(),
+                            "snippet": graph_context,
+                        })
+
+            kg.close()
+        except Exception:
+            pass  # KG unavailable — graceful degradation
+
+        return results
+
+    def auto_extract_knowledge(self, text: str) -> int:
+        """Extract entities from text into the knowledge graph.
+
+        Call this after each conversation turn to build the graph incrementally.
+
+        Returns:
+            Number of new entities added.
+        """
+        try:
+            from orca_code.memory import KnowledgeGraph
+            kg_path = str(Path(self.db_path).parent / "knowledge_graph.db")
+            kg = KnowledgeGraph(kg_path)
+            added = kg.auto_extract(text)
+            kg.close()
+            return added
+        except Exception:
+            return 0
+
     def close(self):
         try:
             self._conn.close()

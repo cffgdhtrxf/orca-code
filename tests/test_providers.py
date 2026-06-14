@@ -1,16 +1,24 @@
 """Tests for providers layer — adapter registry and adapters."""
 
 import json
+
 import pytest
+
 from orca_code.providers.base import (
-    StreamRequestInput, StreamEvent, StreamEventType, ToolDefinition,
+    StreamEvent,
+    StreamEventType,
+    StreamRequestInput,
+    ToolDefinition,
 )
-from orca_code.providers.registry import (
-    get_adapter, register_adapter, list_providers, autodetect_provider,
-)
-from orca_code.providers.openai_compat import OpenAICompatAdapter
 from orca_code.providers.deepseek import DeepSeekAdapter
 from orca_code.providers.local import LocalAdapter
+from orca_code.providers.openai_compat import OpenAICompatAdapter
+from orca_code.providers.registry import (
+    autodetect_provider,
+    get_adapter,
+    list_providers,
+    register_adapter,
+)
 
 
 class TestAdapterRegistration:

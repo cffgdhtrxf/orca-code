@@ -10,11 +10,13 @@ It wraps the existing openai SDK client pattern used throughout Orca Code.
 from __future__ import annotations
 
 import json
-from typing import List
 
 from .base import (
-    ProviderAdapter, StreamRequestInput, ProviderRequest,
-    StreamEvent, StreamEventType, ToolDefinition,
+    ProviderAdapter,
+    ProviderRequest,
+    StreamEvent,
+    StreamEventType,
+    StreamRequestInput,
 )
 
 
@@ -76,7 +78,7 @@ class OpenAICompatAdapter(ProviderAdapter):
             body=json.dumps(body, ensure_ascii=False),
         )
 
-    def parse_stream_line(self, json_line: str) -> List[StreamEvent]:
+    def parse_stream_line(self, json_line: str) -> list[StreamEvent]:
         """Parse one SSE data line into StreamEvents."""
         if not json_line or json_line.strip() == "[DONE]":
             return [StreamEvent(type=StreamEventType.DONE)]
@@ -86,7 +88,7 @@ class OpenAICompatAdapter(ProviderAdapter):
         except json.JSONDecodeError:
             return []
 
-        events: List[StreamEvent] = []
+        events: list[StreamEvent] = []
         choices = data.get("choices", [])
 
         for choice in choices:

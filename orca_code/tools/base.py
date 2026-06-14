@@ -31,7 +31,8 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
 from orca_code.permissions import RiskLevel
 
@@ -45,14 +46,14 @@ class Tool(ABC):
     # ── Class-level metadata (override in subclasses) ──────────────────────
     name: str = ""
     description: str = ""
-    parameters: Dict[str, Any] = {"type": "object", "properties": {}}
-    required: List[str] = []
+    parameters: dict[str, Any] = {"type": "object", "properties": {}}
+    required: list[str] = []
     risk_level: RiskLevel = RiskLevel.EXEC  # safe default
 
     # ── Schema generation ──────────────────────────────────────────────────
 
     @classmethod
-    def to_openai_schema(cls) -> Dict[str, Any]:
+    def to_openai_schema(cls) -> dict[str, Any]:
         """Generate OpenAI-format function definition."""
         return {
             "type": "function",
@@ -69,7 +70,7 @@ class Tool(ABC):
     # ── Validation ─────────────────────────────────────────────────────────
 
     @classmethod
-    def validate_args(cls, args: Dict[str, Any]) -> Optional[str]:
+    def validate_args(cls, args: dict[str, Any]) -> str | None:
         """Validate arguments against schema. Returns error string or None."""
         for key in cls.required:
             if key not in args or args[key] is None:
@@ -101,8 +102,8 @@ class ToolRegistry:
     """
 
     def __init__(self):
-        self._tools: Dict[str, Tool] = {}
-        self._legacy: Dict[str, Callable] = {}
+        self._tools: dict[str, Tool] = {}
+        self._legacy: dict[str, Callable] = {}
 
     # ── Registration ───────────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ class ToolRegistry:
 
     # ── Lookup ─────────────────────────────────────────────────────────────
 
-    def get(self, name: str) -> Optional[Tool]:
+    def get(self, name: str) -> Tool | None:
         """Get a registered Tool by name."""
         return self._tools.get(name)
 
@@ -128,13 +129,13 @@ class ToolRegistry:
     def __len__(self) -> int:
         return len(self._tools) + len(self._legacy)
 
-    def list_names(self) -> List[str]:
+    def list_names(self) -> list[str]:
         """Return all registered tool names."""
         return sorted(list(self._tools.keys()) + list(self._legacy.keys()))
 
     # ── Schema generation ──────────────────────────────────────────────────
 
-    def to_openai_schemas(self) -> List[Dict[str, Any]]:
+    def to_openai_schemas(self) -> list[dict[str, Any]]:
         """Generate OpenAI-format function definitions for all tools."""
         schemas = [tool.to_openai_schema() for tool in self._tools.values()]
         # Legacy tools get minimal schemas
@@ -151,7 +152,7 @@ class ToolRegistry:
 
     # ── Dispatch ───────────────────────────────────────────────────────────
 
-    def dispatch(self, name: str, args: Optional[Dict[str, Any]] = None) -> str:
+    def dispatch(self, name: str, args: dict[str, Any] | None = None) -> str:
         """Execute a tool by name with optional arguments.
 
         Returns tool result string. Raises KeyError if not found.
@@ -171,7 +172,7 @@ class ToolRegistry:
 
     # ── Bridge to legacy TOOL_MAP ──────────────────────────────────────────
 
-    def to_legacy_map(self) -> Dict[str, Callable]:
+    def to_legacy_map(self) -> dict[str, Callable]:
         """Convert to legacy flat dict: {name: callable}.
         Useful for bridging with the existing TOOL_MAP system.
         """

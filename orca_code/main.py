@@ -1,37 +1,83 @@
 """orca_code.main — Tool registry, user input, main loop."""
 
-import os, sys, json, re, time, unicodedata, inspect
-import base64
-from pathlib import Path
+import glob as _glob
+import json
+import os
+import re
+import sys
+import time
 from datetime import datetime
-from typing import Dict, Any
 
-from orca_code.config import (CONFIG, SCRIPT_DIR, SAVE_DIR, TEMP_DIR,
-    SKILLS_DIR, WORKING_DIR, HAS_MEMORY, HAS_SPEECH_RECOGNITION,
-    ENABLE_VOICE, ENABLE_TTS, HAS_TTS, SPEECH_BACKEND,
-    ENABLE_GUI_AUTO, ENABLE_BROWSER_AUTO,
-    IS_MULTIMODAL, MODEL, BASE_URL, API_KEY, TERM_WIDTH,
-    mem_mgr, console, client, mask_key, get_api_balance,
-    PERMISSION_MODE, PERMISSION_RULES, perm_store)
+# prompt_toolkit — professional readline replacement (IPython-grade input)
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import Completer, Completion, PathCompleter
+from prompt_toolkit.styles import Style
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
+from prompt_toolkit.formatted_text import FormattedText
+from pathlib import Path
+
+import openai
+
 from orca_code.cli.commands import handle_config_cmd, handle_profile_cmd
+from orca_code.config import (
+    CONFIG,
+    ENABLE_TTS,
+    ENABLE_VOICE,
+    HAS_MEMORY,
+    HAS_SPEECH_RECOGNITION,
+    HAS_TTS,
+    IS_MULTIMODAL,
+    MODEL,
+    PERMISSION_MODE,
+    PERMISSION_RULES,
+    SAVE_DIR,
+    SKILLS_DIR,
+    SPEECH_BACKEND,
+    client,
+    console,
+    get_api_balance,
+    mem_mgr,
+    perm_store,
+)
+from orca_code.lsp import (
+    get_pending_diagnostics,
+)
+from orca_code.session import (
+    _msg_tokens,
+    auto_save,
+    build_system_prompt,
+    call_model,
+    execute_tool_calls,
+    print_gap,
+    print_soft_gap,
+    process_stream,
+    sanitize_messages,
+    save_conversation,
+    session,
+    show_cache,
+    show_help,
+    show_stats,
+    show_usage,
+    show_welcome,
+    smart_trim_messages,
+)
+from orca_code.tool_registry import TOOL_MAP
+
 # Tool functions are dispatched via TOOL_MAP from tool_registry.
 # Only private/internal names imported directly:
-from orca_code.tools_skills import (_loaded_skills, _md_skill_cache,
-    _autoload_skills_cache, _parse_skill_md, _scheduler_shutdown, _scheduler_thread,
-    start_scheduler)
-from orca_code.tts_mcp import (speak_text, voice_input, init_mcp_tools,
-    init_speech_recognition)
-from orca_code.session import (
-    session, build_system_prompt, sanitize_messages, smart_trim_messages,
-    call_model, process_stream, execute_tool_calls,
-    show_welcome, show_help, show_stats, show_cache, show_usage,
-    print_gap, print_soft_gap, auto_save, save_conversation,
-    _msg_tokens,
+from orca_code.tools_skills import (
+    _autoload_skills_cache,
+    _loaded_skills,
+    _md_skill_cache,
+    _parse_skill_md,
+    _scheduler_shutdown,
+    start_scheduler,
 )
-from orca_code.utils import (_estimate_tokens, cleanup_temp_files, resolve_tool_path)
-from orca_code.tool_registry import TOOLS, TOOL_MAP, run_tool
-from orca_code.subagent import agent_open, agent_eval, agent_close
-from orca_code.lsp import lsp_diagnostics, lsp_references, lsp_definition, auto_diagnose, get_pending_diagnostics, shutdown_all
+from orca_code.tts_mcp import init_mcp_tools, speak_text, voice_input
+from orca_code.utils import cleanup_temp_files
 
 try:
     from _memory_manager import MemoryManager
@@ -75,7 +121,8 @@ def recall_conversation(query: str, limit: int = 5) -> str:
     session.recall_count += 1
     try:
         limit = min(max(1, limit), 20)
-        results = mem_mgr.search_with_snippet(query, limit=limit, snippet_chars=150)
+        # Use hybrid search (FTS5 + Knowledge Graph) for richer results
+        results = mem_mgr.search_hybrid(query, limit=limit, graph_depth=1)
         if not results:
             return "No matching memories found."
         user_msgs = [r for r in results if r["role"] == "user"]
@@ -106,220 +153,209 @@ def recall_conversation(query: str, limit: int = 5) -> str:
 # TOOLS, TOOL_MAP, run_tool are imported from orca_code.tool_registry
 # TOOLS, TOOL_MAP, run_tool are imported from orca_code.tool_registry
 
-def get_user_input():
-    console.print()
-    console.print(f"[bold cyan]你[/bold cyan] [dim]>[/dim] ", end="")
+# ─── Input history & completion ────────────────────────────────────────────
+_INPUT_HISTORY: list[str] = []
+_MAX_HISTORY = 200
 
-    if sys.platform == "win32":
-        return _get_user_input_win32()
-    else:
-        return _get_user_input_unix()
+# Slash commands list (used by completer and help)
+_SLASH_COMMANDS = [
+    "/help", "/clear", "/stats", "/save", "/cache", "/think",
+    "/skills", "/tasks", "/memories", "/profile", "/config",
+    "/permissions", "/search", "/tts", "/voice", "/exit",
+]
 
 
-def _get_user_input_win32():
-    """Windows: 用 getwch() 逐字符读取，可靠检测多行粘贴"""
-    import msvcrt
+class OrcaCompleter(Completer):
+    """@ file mentions + / command completions + Tab path completion."""
 
-    # 清空控制台缓冲区中的残留字符（避免上次操作遗留的 \n 等）
-    while msvcrt.kbhit():
-        try:
-            msvcrt.getwch()
-        except Exception:
-            break
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
 
-    chars = []
-    while True:
-        try:
-            ch = msvcrt.getwch()
-        except (EOFError, KeyboardInterrupt):
-            return None
+        # / command completion
+        if text.lstrip().startswith("/"):
+            # Find the token starting with /
+            for i in range(len(text) - 1, -1, -1):
+                if text[i] == "/" and (i == 0 or text[i - 1].isspace()):
+                    token = text[i:]
+                    for cmd in _SLASH_COMMANDS:
+                        if cmd.startswith(token):
+                            yield Completion(
+                                cmd,
+                                start_position=-len(token),
+                                display_meta="command",
+                            )
+                    return
 
-        if ch == '\r' or ch == '\n':
-            # Windows 回车产生 \r\n，消费掉紧随的 \n 防止残留
-            if ch == '\r' and msvcrt.kbhit():
-                try:
-                    next_ch = msvcrt.getwch()
-                    if next_ch != '\n':
-                        # 不是 \n，放回去（用 ungetwch 不可用，忽略此罕见情况）
-                        pass
-                except Exception:
-                    pass
-            console.print()
-            break
-        elif ch == '\x08':  # Backspace
-            if chars:
-                deleted = chars.pop()
-                # Wide chars (Chinese etc) take 2 columns → double erase
-                w = unicodedata.east_asian_width(deleted)
-                if w in ('W', 'F'):
-                    sys.stdout.write('\b \b\b \b')
-                else:
-                    sys.stdout.write('\b \b')
-                sys.stdout.flush()
-        elif ch == '\x03':  # Ctrl+C — 优雅退出
-            console.print("^C")
-            return None
-        elif ch == '\x1a':  # Ctrl+Z
-            return None
-        elif ch == '\xe0' or ch == '\x00':
-            # 扩展键前缀（方向键等），跳过
-            try:
-                msvcrt.getwch()
-            except Exception:
-                pass
-        elif ch == '\t':
-            # Tab -> 4 空格
-            chars.append(' ' * 4)
-            sys.stdout.write(' ' * 4)
-            sys.stdout.flush()
-        elif ch >= ' ':
-            chars.append(ch)
-            sys.stdout.write(ch)
-            sys.stdout.flush()
+        # @ file mention completion
+        at_pos = text.rfind("@")
+        if at_pos >= 0 and (at_pos == 0 or text[at_pos - 1].isspace()):
+            query = text[at_pos + 1:]
+            matches = _fuzzy_match_files(query)
+            for m in matches[:12]:
+                display = m
+                if os.path.isdir(os.path.join(os.getcwd(), m.rstrip("/").rstrip("\\"))):
+                    display = m.rstrip("/").rstrip("\\") + "/"
+                yield Completion(
+                    display,
+                    start_position=-len(query),
+                    display_meta="file" if not m.endswith("/") else "dir",
+                )
+            return
 
-    line = ''.join(chars)
+        # Fallback: path completion (Tab)
+        yield from PathCompleter(
+            expanduser=True,
+            file_filter=lambda name: not name.startswith("."),
+        ).get_completions(document, complete_event)
 
-    # 多行粘贴检测：getwch 绕过 Python stdin 缓冲，kbhit 可靠
+
+def _fuzzy_match_files(query: str, max_results: int = 12) -> list[str]:
+    """Fuzzy match files in current directory for @ mentions."""
+    import fnmatch
+    results = []
     try:
-        import time as _time
-        _time.sleep(0.05)
-        if msvcrt.kbhit():
-            extra_chars = []
-            while msvcrt.kbhit():
-                try:
-                    extra_chars.append(msvcrt.getwch())
-                except Exception:
-                    break
-            extra_text = ''.join(extra_chars)
-            if extra_text.strip():
-                extra_text = extra_text.replace('\r\n', '\n').replace('\r', '\n')
-                extra_lines = [l for l in extra_text.split('\n') if l.strip()]
-                if extra_lines:
-                    get_user_input._paste_count += 1
-                    c = get_user_input._paste_count
-                    n = len(extra_lines)
-                    full_text = line + '\n' + '\n'.join(extra_lines)
-                    # 预览前 120 字符
-                    preview = full_text if len(full_text) <= 120 else full_text[:120] + "..."
-                    console.print(f"  [Pasted text #{c} +{n} lines]", style="dim")
-                    console.print(f"  {preview}", style="dim")
-                    console.print("  [[dim]Enter=发送  e=编辑  q=取消[/dim]] ", end="")
-                    try:
-                        choice = msvcrt.getwch()
-                    except Exception:
-                        choice = '\r'
-                    console.print()
-                    if choice.lower() == 'q':
-                        console.print("  [dim]已取消[/dim]")
-                        return ""
-                    if choice.lower() == 'e':
-                        console.print("  [dim]正在打开记事本编辑...[/dim]")
-                        import tempfile, subprocess
-                        tmp = tempfile.NamedTemporaryFile(
-                            mode='w', suffix='.txt', delete=False, encoding='utf-8')
-                        tmp.write(full_text)
-                        tmp_path = tmp.name
-                        tmp.close()
-                        subprocess.run(['notepad', tmp_path])
-                        try:
-                            with open(tmp_path, 'r', encoding='utf-8') as f:
-                                edited = f.read().strip()
-                        except Exception:
-                            edited = ""
-                        try:
-                            os.unlink(tmp_path)
-                        except Exception:
-                            pass
-                        if not edited:
-                            console.print("  [dim]已取消[/dim]")
-                            return ""
-                        console.print(f"  [Pasted text #{c} +{n} lines]", style="dim")
-                        return edited
-                    # Enter (default) or any other key -> send as-is
-                    return full_text
-    except Exception:
+        for entry in os.scandir(os.getcwd()):
+            if entry.name.startswith("."):
+                continue
+            name = entry.name
+            if entry.is_dir():
+                name += os.sep
+            # Simple substring match (case-insensitive)
+            if query.lower() in name.lower():
+                # Score: exact prefix match ranks higher
+                score = 0 if name.lower().startswith(query.lower()) else 1
+                results.append((score, name))
+    except OSError:
         pass
-
-    if not line.strip():
-        return ""
-
-    cmd = line.strip()
-    if cmd.startswith("/"):
-        return cmd
-
-    if line.rstrip().endswith("\\\\"):
-        lines = [line.rstrip()[:-2]]
-        while True:
-            try:
-                console.print("   ", end="")
-                next_line = input()
-                if next_line.rstrip().endswith("\\\\"):
-                    lines.append(next_line.rstrip()[:-2])
-                else:
-                    lines.append(next_line)
-                    break
-            except (EOFError, KeyboardInterrupt):
-                break
-        return "\n".join(lines)
-
-    return line
+    results.sort(key=lambda x: (x[0], len(x[1])))
+    return [r[1] for r in results[:max_results]]
 
 
-def _get_user_input_unix():
-    """Unix: input() + select 检测多行粘贴"""
+# ── prompt_toolkit session (reused across turns) ────────────────────────
+
+_ORCA_PROMPT_STYLE = Style.from_dict({
+    "prompt": "bold cyan",
+    "bottom-toolbar": "dim italic",
+    "auto-suggestion": "#666666",
+})
+
+
+def _get_bottom_toolbar():
+    """Footer bar like DeepCode with flash status integration."""
+    from orca_code.session_ui import _get_flash
+    flash_msg, flash_style = _get_flash()
+    if flash_msg:
+        return f" {flash_msg} "
+    return (
+        " Enter 发送  |  Shift+Enter 换行  |  @ 文件  |  / 命令  |  "
+        "Ctrl+C 中断  |  Ctrl+D 退出"
+    )
+
+
+_prompt_session: PromptSession | None = None
+
+
+def _get_prompt_session() -> PromptSession:
+    """Create or return the shared prompt_toolkit session."""
+    global _prompt_session
+    if _prompt_session is None:
+        hist_file = SAVE_DIR / ".input_history"
+        _prompt_session = PromptSession(
+            history=FileHistory(str(hist_file)),
+            auto_suggest=AutoSuggestFromHistory(),
+            completer=OrcaCompleter(),
+            style=_ORCA_PROMPT_STYLE,
+            bottom_toolbar=_get_bottom_toolbar,
+            complete_while_typing=False,  # Only on Tab
+            reserve_space_for_menu=0,  # No dropdown menu space
+            enable_history_search=False,  # We use ↑↓ for history
+            multiline=False,  # Enter=submit, Shift+Enter=newline
+        )
+    return _prompt_session
+
+
+def get_user_input():
+    """Read user input with prompt_toolkit (cursor movement, completions, history).
+
+    Returns:
+        User input string, None to exit, "" to skip.
+    """
+    console.print()
+    session = _get_prompt_session()
+
+    # Build prompt text
+    prompt_msg = [("class:prompt", "你 > ")]
+
     try:
-        line = input()
-    except (EOFError, KeyboardInterrupt):
+        line = session.prompt(
+            prompt_msg,
+            mouse_support=False,
+        )
+    except KeyboardInterrupt:
+        # Ctrl+C → interrupt current generation (handled by caller)
+        console.print("^C")
+        return None
+    except EOFError:
+        # Ctrl+D on empty line → exit
+        console.print()
         return None
 
+    if line is None:
+        return None
+
+    line = line.rstrip("\r\n")
+
     if not line.strip():
         return ""
 
-    cmd = line.strip()
-    if cmd.startswith("/"):
-        return cmd
-
-    try:
-        import select, time as _time
-        _time.sleep(0.05)
-        if select.select([sys.stdin], [], [], 0.1)[0]:
-            remaining = sys.stdin.read()
-            if remaining.strip():
-                get_user_input._paste_count += 1
-                c = get_user_input._paste_count
-                n = remaining.count("\n") + 1
-                full_text = line + remaining.rstrip()
-                console.print(f"  [Pasted text #{c} +{n} lines]", style="dim")
-                return full_text
-    except Exception:
-        pass
-
+    # Multi-line: if line ends with \\, continue reading
     if line.rstrip().endswith("\\\\"):
         lines = [line.rstrip()[:-2]]
         while True:
             try:
-                console.print("   ", end="")
-                next_line = input()
+                next_line = session.prompt(
+                    [("class:prompt", "  ")],  # Indented continuation
+                    mouse_support=False,
+                )
+                if next_line is None:
+                    break
                 if next_line.rstrip().endswith("\\\\"):
                     lines.append(next_line.rstrip()[:-2])
                 else:
                     lines.append(next_line)
                     break
-            except (EOFError, KeyboardInterrupt):
+            except (KeyboardInterrupt, EOFError):
                 break
         return "\n".join(lines)
 
     return line
 
 
-get_user_input._paste_count = 0
+def _add_history(line: str):
+    """Append to in-memory history (FileHistory handles disk persistence)."""
+    if _INPUT_HISTORY and _INPUT_HISTORY[-1] == line:
+        return
+    _INPUT_HISTORY.append(line)
+    if len(_INPUT_HISTORY) > _MAX_HISTORY:
+        _INPUT_HISTORY.pop(0)
+
+
+def _search_history(query: str) -> list[str]:
+    """Search in-memory history (legacy, kept for API compat)."""
+    q = query.lower()
+    return [line for line in reversed(_INPUT_HISTORY) if q in line.lower()][:10]
+
+
+def _complete_path(partial: str) -> str | None:
+    """Legacy path completion (replaced by OrcaCompleter, kept for API compat)."""
+    return None
 
 
 def main():
     history_path = SAVE_DIR / "chat_history.json"
     if history_path.exists():
         try:
-            with open(history_path, "r", encoding="utf-8") as f:
+            with open(history_path, encoding="utf-8") as f:
                 loaded = json.load(f)
             if isinstance(loaded, list) and len(loaded) > 0:
                 if loaded[0].get("role") != "system":
@@ -371,6 +407,10 @@ def main():
             console.print("[dim]Goodbye[/dim]"); break
         if not user_input:
             continue
+
+        # Track in input history (skip slash commands)
+        if not user_input.startswith("/"):
+            _add_history(user_input)
 
         is_voice = False
         if user_input.startswith("/"):
@@ -610,7 +650,7 @@ def main():
                 console.print(f"[bold red]404: Model '{MODEL}' not found[/bold red]")
                 logging.error(f"Model: {e}"); session.messages.pop(); session.turns -= 1; break
             except openai.AuthenticationError as e:
-                console.print(f"[bold red]401: Invalid API key[/bold red]")
+                console.print("[bold red]401: Invalid API key[/bold red]")
                 logging.error(f"Auth: {e}"); session.messages.pop(); session.turns -= 1; break
             except openai.BadRequestError as e:
                 console.print(f"[bold red]400: {e}[/bold red]")
@@ -630,6 +670,13 @@ def main():
 
             if usage:
                 session.add_usage(usage); show_usage(usage)
+            else:
+                # DeepSeek streaming doesn't include usage — estimate from messages + answer
+                est_in = sum(_msg_tokens(m) for m in session.messages[-1:])  # last user msg
+                est_out = max(1, len(answer) // 2) if answer else 0  # rough: ~2 chars per token
+                session.total_input_tokens += est_in
+                session.total_output_tokens += est_out
+                console.print(f"[dim][T] 输入 ~{est_in:,}t  |  输出 ~{est_out:,}t (估算)[/dim]")
 
             if tool_calls_idx:
                 tc_list, tr_list = execute_tool_calls(tool_calls_idx)
@@ -714,29 +761,30 @@ def main():
                     turn = session.turns
                     mem_mgr.save_message(sid, turn, "user", str(last_user)[:10000])
                     mem_mgr.save_message(sid, turn, "assistant", str(answer)[:10000])
+                    # Auto-extract entities into knowledge graph
+                    mem_mgr.auto_extract_knowledge(str(last_user)[:5000])
                 except Exception:
                     pass
 
-        tokens = session.total_input_tokens + session.total_output_tokens
-        # Fallback: if API didn't report usage, estimate from conversation size
-        if tokens == 0 and session.turns > 0:
-            tokens = sum(_msg_tokens(m) for m in session.messages)
-            est_mark = "~"
-        else:
-            est_mark = ""
-        # Cache hit rate: cached / total input
-        if session.total_input_tokens > 0 and session.total_cached_tokens > 0:
-            hit_rate = session.total_cached_tokens / session.total_input_tokens * 100
-            c_str = f" | 缓存命中 {session.total_cached_tokens:,} ({hit_rate:.0f}%)"
-        elif session.total_cached_tokens > 0:
-            c_str = f" | 缓存命中 {session.total_cached_tokens:,}"
-        else:
-            c_str = ""
-        r_str = f" | 思考 {session.total_reasoning_tokens:,}" if session.total_reasoning_tokens > 0 else ""
+        # Per-turn tokens (diff from cumulative)
+        turn_in = session.total_input_tokens - getattr(session, '_prev_in', 0)
+        turn_out = session.total_output_tokens - getattr(session, '_prev_out', 0)
+        session._prev_in = session.total_input_tokens
+        session._prev_out = session.total_output_tokens
+        if turn_in <= 0:
+            turn_in = sum(_msg_tokens(m) for m in session.messages[-2:])
+        if turn_out <= 0:
+            turn_out = max(1, len(answer) // 2) if answer else 0
         bal = get_api_balance()
-        console.print(
-            f"[dim]Turn {session.turns} | Tools {session.tool_calls} | "
-            f"{est_mark}{tokens:,} tokens{c_str}{r_str} | Bal {bal} | {session.elapsed}{ttl_warning}[/dim]"
+
+        # Single-line turn summary
+        from orca_code.session_ui import show_turn_summary
+        show_turn_summary(
+            turn=session.turns,
+            input_tokens=turn_in,
+            output_tokens=turn_out,
+            elapsed=session.elapsed,
+            balance=bal,
         )
 
 if __name__ == "__main__":

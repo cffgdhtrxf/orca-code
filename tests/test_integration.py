@@ -4,11 +4,9 @@ Verifies that the new modules work together correctly without breaking
 backward compatibility with the existing TOOL_MAP system.
 """
 
-import json
-from unittest.mock import patch, MagicMock
-import pytest
-from pathlib import Path
+from unittest.mock import MagicMock
 
+import pytest
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Mock API streaming tests
@@ -128,14 +126,14 @@ class TestMockAPIStream:
 
     def test_error_classification_network(self):
         """Network errors should be classified as retryable."""
-        from orca_code.core.errors import classify_error, ErrorCategory
+        from orca_code.core.errors import ErrorCategory, classify_error
         cat, retry = classify_error(ConnectionError("Connection refused"))
         assert cat == ErrorCategory.NETWORK
         assert retry is True
 
     def test_error_classification_auth(self):
         """Auth errors should NOT be retryable."""
-        from orca_code.core.errors import classify_error, ErrorCategory
+        from orca_code.core.errors import ErrorCategory, classify_error
         cat, retry = classify_error(Exception("Invalid API Key"))
         assert cat == ErrorCategory.AUTH
         assert retry is False
@@ -185,7 +183,8 @@ class TestProviderClient:
 
     def test_get_provider_info(self):
         from orca_code.infrastructure.provider_client import (
-            create_provider_client, get_provider_info,
+            create_provider_client,
+            get_provider_info,
         )
         client = create_provider_client(
             api_key="test-key",
@@ -231,8 +230,8 @@ class TestToolBridge:
             tool_registry.dispatch("nonexistent_tool_xyz")
 
     def test_bridge_legacy_sync(self):
-        from orca_code.tools.bridge import sync_from_legacy
         from orca_code.tools import tool_registry
+        from orca_code.tools.bridge import sync_from_legacy
         count = sync_from_legacy()
         assert count >= 0
         assert len(tool_registry) >= 50
@@ -247,7 +246,7 @@ class TestEventBusIntegration:
     """Verify EventBus pub-sub works correctly."""
 
     def test_event_bus_subscribe_and_emit(self):
-        from orca_code.core.event_bus import get_event_bus, EventType, AgentEvent
+        from orca_code.core.event_bus import AgentEvent, EventType, get_event_bus
         bus = get_event_bus()
         events = []
 
@@ -261,7 +260,7 @@ class TestEventBusIntegration:
         bus.unsubscribe(EventType.TOOL_START, handler)
 
     def test_event_bus_isolated_errors(self):
-        from orca_code.core.event_bus import get_event_bus, EventType, AgentEvent
+        from orca_code.core.event_bus import AgentEvent, EventType, get_event_bus
         bus = get_event_bus()
         called = []
 

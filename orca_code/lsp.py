@@ -14,10 +14,7 @@ import json
 import os
 import subprocess
 import threading
-import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Language server definitions
@@ -76,13 +73,13 @@ class LspClient:
     def __init__(self, root_uri: str, language_id: str):
         self.root_uri = root_uri
         self.language_id = language_id
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
         self._seq = 0
         self._lock = threading.Lock()
         self._initialized = False
-        self._diagnostics: Dict[str, List[dict]] = {}  # uri -> list of diagnostics
+        self._diagnostics: dict[str, list[dict]] = {}  # uri -> list of diagnostics
 
-    def _get_cmd(self) -> Optional[List[str]]:
+    def _get_cmd(self) -> list[str] | None:
         """Find the language server command for our extension."""
         # Map language_id back to a file extension
         lang_to_ext = {
@@ -175,7 +172,7 @@ class LspClient:
             self._process = None
             self._initialized = False
 
-    def _send_request(self, method: str, params: dict, timeout: float = 10.0) -> Optional[dict]:
+    def _send_request(self, method: str, params: dict, timeout: float = 10.0) -> dict | None:
         """Send a JSON-RPC request and wait for response."""
         if not self._process or self._process.stdin is None:
             return None
@@ -219,7 +216,7 @@ class LspClient:
         except Exception:
             pass
 
-    def _read_response(self, timeout: float = 10.0) -> Optional[dict]:
+    def _read_response(self, timeout: float = 10.0) -> dict | None:
         """Read a single JSON-RPC response from stdout."""
         if not self._process or self._process.stdout is None:
             return None
@@ -371,14 +368,14 @@ class LspClient:
 # Global client cache — one per language
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_clients: Dict[str, LspClient] = {}
+_clients: dict[str, LspClient] = {}
 _clients_lock = threading.Lock()
 
 # Registry of files that have been changed and need diagnostics
-_pending_diagnostics: Dict[str, str] = {}  # path -> language_id
+_pending_diagnostics: dict[str, str] = {}  # path -> language_id
 
 
-def _get_or_create_client(workspace_path: str, language_id: str) -> Optional[LspClient]:
+def _get_or_create_client(workspace_path: str, language_id: str) -> LspClient | None:
     """Get or create an LSP client for the given language."""
     with _clients_lock:
         if language_id in _clients:
@@ -395,7 +392,7 @@ def _get_or_create_client(workspace_path: str, language_id: str) -> Optional[Lsp
         return None
 
 
-def _detect_language(file_path: str) -> Optional[str]:
+def _detect_language(file_path: str) -> str | None:
     """Detect language ID from file extension."""
     ext_map = {
         ".py": "python",

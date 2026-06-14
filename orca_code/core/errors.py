@@ -15,11 +15,12 @@ Categories:
 
 from __future__ import annotations
 
+import logging
 import re
 import time
-import logging
+from collections.abc import Callable
 from enum import Enum
-from typing import Callable, TypeVar, Any
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 

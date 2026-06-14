@@ -18,15 +18,15 @@ _registration_counts = {}
 
 def _register_all():
     """Register all tool categories. Idempotent."""
-    from orca_code.tools.core import register_core_tools
-    from orca_code.tools.web import register_web_tools
-    from orca_code.tools.office import register_office_tools
-    from orca_code.tools.dev import register_dev_tools
-    from orca_code.tools.skills import register_skills_tools
-    from orca_code.tools.tasks import register_tasks_tools
     from orca_code.tools.automation import register_automation_tools
     from orca_code.tools.browser import register_browser_tools
+    from orca_code.tools.core import register_core_tools
+    from orca_code.tools.dev import register_dev_tools
     from orca_code.tools.extended import register_extended_tools
+    from orca_code.tools.office import register_office_tools
+    from orca_code.tools.skills import register_skills_tools
+    from orca_code.tools.tasks import register_tasks_tools
+    from orca_code.tools.web import register_web_tools
 
     for name, fn in [
         ("core", register_core_tools),

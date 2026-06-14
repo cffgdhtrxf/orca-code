@@ -1,27 +1,42 @@
 """orca_code.tts_mcp — TTS, voice input, MCP protocol."""
 
-import os, sys, json, asyncio, subprocess, threading, tempfile, time
-from pathlib import Path
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
 from datetime import datetime
-from orca_code.config import (CONFIG, HAS_TTS, HAS_BERT_VITS2,
-    HAS_SPEECH_RECOGNITION, ENABLE_TTS, ENABLE_VOICE, SPEECH_BACKEND,
-    SCRIPT_DIR, WORKING_DIR, console)
+from pathlib import Path
+
+from orca_code.config import (
+    HAS_BERT_VITS2,
+    HAS_SPEECH_RECOGNITION,
+    HAS_TTS,
+    SPEECH_BACKEND,
+    WORKING_DIR,
+    console,
+)
 
 # Speech recognition — three-tier import fallback
 init_speech_recognition = None
 speech_to_text = None
 try:
-    from _speech_recognition_hybrid import init_speech_recognition as _init_sp, speech_to_text as _stt
+    from _speech_recognition_hybrid import init_speech_recognition as _init_sp
+    from _speech_recognition_hybrid import speech_to_text as _stt
     HAS_SPEECH_RECOGNITION = True
     SPEECH_BACKEND = "hybrid"
 except ImportError:
     try:
-        from _speech_recognition_vosk import init_speech_recognition as _init_sp, speech_to_text as _stt
+        from _speech_recognition_vosk import init_speech_recognition as _init_sp
+        from _speech_recognition_vosk import speech_to_text as _stt
         HAS_SPEECH_RECOGNITION = True
         SPEECH_BACKEND = "vosk"
     except ImportError:
         try:
-            from _speech_recognition_whisper import init_speech_recognition as _init_sp, speech_to_text as _stt
+            from _speech_recognition_whisper import init_speech_recognition as _init_sp
+            from _speech_recognition_whisper import speech_to_text as _stt
             HAS_SPEECH_RECOGNITION = True
             SPEECH_BACKEND = "whisper"
         except ImportError:
@@ -46,7 +61,7 @@ class BertVits2TTS:
     当前为简化框架，实际使用时需要完整实现。
     参考：https://github.com/fishaudio/BERT-VITS2
     """
-    
+
     def __init__(self, model_dir=None):
         self.model_dir = model_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bert_vits2_models")
         self.is_initialized = False
@@ -55,24 +70,24 @@ class BertVits2TTS:
         self.net_g = None
         self.tokenizer = None
         self.bert_model = None
-        
+
     def initialize(self):
         """初始化 BERT-VITS2 模型"""
         if self.is_initialized:
             return True
-        
+
         try:
             console.print("[yellow][警告] BERT-VITS2 PyTorch 版本需要完整实现[/yellow]")
             console.print("[dim]当前使用简化框架，建议继续使用 Windows SAPI[/dim]")
             console.print("[dim]如需启用完整版，请参考: https://github.com/fishaudio/BERT-VITS2[/dim]")
             return False
-            
+
         except Exception as e:
             console.print(f"[red][✗] BERT-VITS2 初始化失败: {e}[/red]")
             import traceback
             console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return False
-    
+
     def text_to_speech(self, text: str, output_path: str = None) -> str:
         """将文本转换为语音（需要完整实现）"""
         console.print("[yellow][提示] BERT-VITS2 推理功能尚未完整实现[/yellow]")
@@ -280,7 +295,7 @@ def _enumerate_mcp_tools() -> list:
 def init_mcp_tools():
     if "--no-mcp" in sys.argv:
         return []
-    from orca_code.tool_registry import TOOLS, TOOL_MAP
+    from orca_code.tool_registry import TOOL_MAP, TOOLS
     mcp_tools = _enumerate_mcp_tools()
     if mcp_tools:
         for t in mcp_tools:

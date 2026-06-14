@@ -6,15 +6,13 @@ Extracted from session.py. No UI or streaming dependencies.
 from __future__ import annotations
 
 import json
-import re
 import logging
+import re
 from datetime import datetime
-from typing import Optional, Dict, Any, List
 
-from orca_code.config import (CONFIG, CONTEXT_MAX_TOKENS, KEEP_ROUNDS,
-    HAS_MEMORY, mem_mgr, console)
-from orca_code.utils import _estimate_tokens, _sanitize_ansi, _strip_html
-from orca_code.tool_registry import TOOLS, TOOL_MAP
+from orca_code.config import CONTEXT_MAX_TOKENS, HAS_MEMORY, KEEP_ROUNDS, console, mem_mgr
+from orca_code.tool_registry import TOOL_MAP, TOOLS
+from orca_code.utils import _estimate_tokens, _sanitize_surrogates
 
 
 def _get_tools():
@@ -37,7 +35,24 @@ def sanitize_messages(messages: list) -> list:
         if msg.get('role') == 'tool':
             if msg.get('tool_call_id', '') not in valid_tool_ids:
                 continue
-        cleaned.append(msg)
+        # Sanitize surrogate characters in all string fields
+        sanitized = {}
+        for k, v in msg.items():
+            if isinstance(v, str):
+                sanitized[k] = _sanitize_surrogates(v)
+            elif isinstance(v, list):
+                sanitized[k] = [
+                    _sanitize_surrogates(x) if isinstance(x, str) else x
+                    for x in v
+                ]
+            elif isinstance(v, dict):
+                sanitized[k] = {
+                    sk: _sanitize_surrogates(sv) if isinstance(sv, str) else sv
+                    for sk, sv in v.items()
+                }
+            else:
+                sanitized[k] = v
+        cleaned.append(sanitized)
     result_tool_ids = {m.get('tool_call_id') for m in cleaned if m.get('role') == 'tool'}
     for msg in cleaned:
         if msg.get('role') == 'assistant' and msg.get('tool_calls'):

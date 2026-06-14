@@ -7,12 +7,11 @@ and environment information.
 
 from __future__ import annotations
 
-import sys
-import platform
 import getpass
+import platform
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 
 def init_console() -> None:
@@ -64,7 +63,7 @@ def get_device_type() -> str:
     return "Unknown"
 
 
-def get_system_info(working_dir: Optional[Path] = None) -> str:
+def get_system_info(working_dir: Path | None = None) -> str:
     """Generate a human-readable system information summary.
 
     Args:

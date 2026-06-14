@@ -47,6 +47,14 @@ if _RUST_LIB.exists():
             _native_search = _native_rs.search_content
             _native_diff = _native_rs.apply_diff
             _native_walk = _native_rs.walk_files
+            # Phase 5: try new tokenizer and encoding functions
+            try:
+                _native_count_tokens = _native_rs.count_tokens
+                _native_count_tokens_batch = _native_rs.count_tokens_batch
+                _native_detect_encoding = _native_rs.detect_encoding
+                _HAS_NATIVE_TOKENIZER = True
+            except AttributeError:
+                _HAS_NATIVE_TOKENIZER = False
             # Restore this package in sys.modules (loader overwrote it)
             if _pkg is not None:
                 _sys.modules[__name__] = _pkg
@@ -270,3 +278,105 @@ def walk_files(directory: str, pattern: str = "*", max_files: int = 5000) -> str
 def is_native_available() -> bool:
     """Check if the Rust native module is loaded."""
     return _HAS_NATIVE
+
+
+# ── Phase 5: Tokenizer ─────────────────────────────────────────────────────
+
+_HAS_NATIVE_TOKENIZER = False
+
+
+def count_tokens(text: str) -> int:
+    """Fast token count estimate (cl100k_base approximation).
+
+    Uses Rust native implementation when available; falls back to
+    word-based estimator in pure Python.
+    """
+    if _HAS_NATIVE and _HAS_NATIVE_TOKENIZER:
+        try:
+            return _native_count_tokens(text)
+        except Exception:
+            pass
+    return _py_count_tokens(text)
+
+
+def count_tokens_batch(texts: list[str]) -> list[int]:
+    """Batch token count (parallel when native is available)."""
+    if _HAS_NATIVE and _HAS_NATIVE_TOKENIZER:
+        try:
+            return _native_count_tokens_batch(texts)
+        except Exception:
+            pass
+    return [_py_count_tokens(t) for t in texts]
+
+
+def _py_count_tokens(text: str) -> int:
+    """Pure Python token estimator (cl100k_base approximation)."""
+    if not text:
+        return 0
+    import unicodedata
+    count = 0
+    for ch in text:
+        cat = unicodedata.category(ch)
+        if cat.startswith('L') and unicodedata.east_asian_width(ch) in ('W', 'F'):
+            count += 1
+        elif cat.startswith('L') or cat.startswith('N'):
+            count += 0.25
+        elif ch.isspace():
+            count += 1
+        else:
+            count += 1
+    return max(1, int(count * 1.05))
+
+
+# ── Phase 5: Encoding Detection ─────────────────────────────────────────────
+
+def detect_encoding(path: str):
+    """Detect file encoding. Returns EncodingInfo or tuple (encoding, confidence, has_bom).
+
+    Uses Rust native implementation when available.
+    """
+    if _HAS_NATIVE and _HAS_NATIVE_TOKENIZER:
+        try:
+            return _native_detect_encoding(path)
+        except Exception:
+            pass
+    return _py_detect_encoding(path)
+
+
+def _py_detect_encoding(path: str):
+    """Pure Python encoding detection (BOM + chardet fallback)."""
+    p = Path(path)
+    if not p.exists():
+        return ("unknown", 0.0, False)
+
+    data = p.read_bytes()[:65536]
+    if not data:
+        return ("ascii", 1.0, False)
+
+    # BOM detection
+    if len(data) >= 3 and data[:3] == b'\xef\xbb\xbf':
+        return ("utf-8", 1.0, True)
+    if len(data) >= 2 and data[:2] == b'\xfe\xff':
+        return ("utf-16-be", 1.0, True)
+    if len(data) >= 2 and data[:2] == b'\xff\xfe':
+        return ("utf-16-le", 1.0, True)
+
+    # UTF-8 validation
+    try:
+        data.decode('utf-8')
+        return ("utf-8", 0.99, False)
+    except UnicodeDecodeError:
+        pass
+
+    # Try charset-normalizer if available
+    try:
+        from charset_normalizer import from_bytes
+        results = from_bytes(data)
+        if results:
+            best = results.best()
+            if best:
+                return (best.encoding or "unknown", best.fingerprint.confidence or 0.5, False)
+    except ImportError:
+        pass
+
+    return ("unknown", 0.0, False)

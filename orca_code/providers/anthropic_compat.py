@@ -15,11 +15,13 @@ Key differences from OpenAI-compatible:
 from __future__ import annotations
 
 import json
-from typing import List
 
 from .base import (
-    ProviderAdapter, StreamRequestInput, ProviderRequest,
-    StreamEvent, StreamEventType, ToolDefinition,
+    ProviderAdapter,
+    ProviderRequest,
+    StreamEvent,
+    StreamEventType,
+    StreamRequestInput,
 )
 
 
@@ -106,7 +108,7 @@ class AnthropicCompatAdapter(ProviderAdapter):
             body=json.dumps(body, ensure_ascii=False),
         )
 
-    def parse_stream_line(self, json_line: str) -> List[StreamEvent]:
+    def parse_stream_line(self, json_line: str) -> list[StreamEvent]:
         """Parse Anthropic SSE line into StreamEvents.
 
         Anthropic SSE event types:
@@ -127,7 +129,7 @@ class AnthropicCompatAdapter(ProviderAdapter):
             return []
 
         event_type = data.get("type", "")
-        events: List[StreamEvent] = []
+        events: list[StreamEvent] = []
 
         if event_type == "content_block_start":
             block = data.get("content_block", {})

@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # ─── Default configuration ───────────────────────────────────────────────────
 
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "api_key": "",
     "base_url": "https://api.deepseek.com",
     "model_name": "deepseek-chat",
@@ -85,7 +85,7 @@ def _load_json(path: Path) -> dict:
     """Load config from JSON file. Returns empty dict if not found."""
     if not path.exists():
         return {}
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 

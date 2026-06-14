@@ -14,13 +14,12 @@ import json
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 
 class FileLogger:
     """Append-only JSONL logger with daily rotation."""
 
-    def __init__(self, log_dir: Optional[Path] = None):
+    def __init__(self, log_dir: Path | None = None):
         self._log_dir = log_dir or (Path(__file__).parent.parent.parent / "logs")
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -41,14 +40,14 @@ class FileLogger:
         with self._lock:
             path = self._get_path()
             try:
-                with open(path, "a", encoding="utf-8") as f:
+                with open(path, "a", encoding="utf-8", errors="replace") as f:
                     f.write(json.dumps(entry, ensure_ascii=False) + "\n")
             except Exception:
                 pass  # Never crash on logging failure
 
-    def attach_to_bus(self, bus=None) -> "FileLogger":
+    def attach_to_bus(self, bus=None) -> FileLogger:
         """Subscribe to EventBus for automatic logging."""
-        from orca_code.core.event_bus import get_event_bus, EventType
+        from orca_code.core.event_bus import EventType, get_event_bus
 
         if bus is None:
             bus = get_event_bus()
@@ -96,11 +95,11 @@ class FileLogger:
 
 
 # Singleton
-_logger: Optional[FileLogger] = None
+_logger: FileLogger | None = None
 _logger_lock = threading.Lock()
 
 
-def get_file_logger(log_dir: Optional[Path] = None) -> FileLogger:
+def get_file_logger(log_dir: Path | None = None) -> FileLogger:
     global _logger
     if _logger is None:
         with _logger_lock:
@@ -109,6 +108,6 @@ def get_file_logger(log_dir: Optional[Path] = None) -> FileLogger:
     return _logger
 
 
-def attach_file_logger(bus=None, log_dir: Optional[Path] = None) -> FileLogger:
+def attach_file_logger(bus=None, log_dir: Path | None = None) -> FileLogger:
     """One-call setup: create file logger and attach to EventBus."""
     return get_file_logger(log_dir).attach_to_bus(bus)

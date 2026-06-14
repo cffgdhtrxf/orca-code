@@ -1,13 +1,30 @@
 """orca_code.tools_dev — Git, code nav, vision, Python REPL."""
 
-import os, sys, re, base64, time, tempfile, subprocess
-from pathlib import Path
+import base64
+import os
+import re
+import subprocess
+import sys
+import time
 from datetime import datetime
+from pathlib import Path
+
 import openai
 from openai import OpenAI
-from orca_code.config import (CONFIG, MODEL, BASE_URL, API_KEY,
-    IS_MULTIMODAL, VISION_MODEL, VISION_BASE_URL, VISION_API_KEY,
-    WORKING_DIR, TEMP_DIR, OUTPUT_DIR, HAS_OPENCV, HAS_PILLOW, client, console)
+
+from orca_code.config import (
+    API_KEY,
+    BASE_URL,
+    HAS_OPENCV,
+    IS_MULTIMODAL,
+    MODEL,
+    OUTPUT_DIR,
+    VISION_API_KEY,
+    VISION_BASE_URL,
+    VISION_MODEL,
+    WORKING_DIR,
+    client,
+)
 
 # Lazy imports for optional deps (HAS_* flags checked before use)
 try:
@@ -125,7 +142,6 @@ def find_references(symbol: str, directory: str = None, file_filter: str = None)
     return "\n".join(results) if results else f"未找到 '{symbol}' 的引用"
 def analyze_image(image_path: str, question: str = None) -> str:
     """Analyze image. Multimodal models see images directly; others use vision_model."""
-    import base64
     p = Path(image_path)
     if not p.exists():
         return f"Error: image not found - {image_path}"
@@ -133,7 +149,7 @@ def analyze_image(image_path: str, question: str = None) -> str:
     if p.suffix.lower() not in valid_extensions:
         return f"Error: unsupported format {p.suffix}, supported: {', '.join(valid_extensions)}"
     if p.stat().st_size > 10 * 1024 * 1024:
-        return f"Error: image too large (>10MB)"
+        return "Error: image too large (>10MB)"
 
     with open(p, "rb") as f:
         image_data = base64.b64encode(f.read()).decode('utf-8')
@@ -176,16 +192,16 @@ def capture_camera(camera_index: int = 0, question: str = None) -> str:
     """从摄像头捕获图像并分析，同时用系统图片查看器打开照片"""
     if not HAS_OPENCV:
         return "错误: 未安装 opencv-python，请运行: pip install opencv-python"
-    
+
     cap = None
-    
+
     try:
         # 打开摄像头
         print("\n[提示] 正在打开摄像头...")
         cap = cv2.VideoCapture(camera_index)
         if not cap.isOpened():
             return f"错误: 无法打开摄像头 {camera_index}"
-        
+
         # 多尝试几次以确保获取到有效帧
         frame = None
         for attempt in range(5):
@@ -193,26 +209,26 @@ def capture_camera(camera_index: int = 0, question: str = None) -> str:
             if ret and frame is not None:
                 break
             time.sleep(0.2)
-        
+
         if not ret or frame is None:
             return "错误: 无法从摄像头捕获图像用于分析"
-        
+
         # 保存到 output/ 工作区
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         camera_path = str(OUTPUT_DIR / f"camera_{timestamp}.jpg")
-        
+
         # OpenCV 使用 BGR，需要转换为 RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         from PIL import Image
         img = Image.fromarray(frame_rgb)
         img.save(camera_path, "JPEG", quality=85)
-        
+
         print(f"[提示] 照片已保存: {camera_path}")
-        
+
         # 释放摄像头
         cap.release()
         cap = None
-        
+
         # 用系统默认图片查看器打开照片
         print("[提示] 正在用系统图片查看器打开照片...")
         try:
@@ -226,7 +242,7 @@ def capture_camera(camera_index: int = 0, question: str = None) -> str:
         except Exception as e:
             print(f"[警告] 无法自动打开图片: {e}")
             print(f"[提示] 请手动打开: {camera_path}")
-        
+
         # Multimodal: return image directly; non-multimodal: call vision model
         if IS_MULTIMODAL:
             print("[提示] 多模态模式，图像直接交给主模型...")
@@ -236,7 +252,7 @@ def capture_camera(camera_index: int = 0, question: str = None) -> str:
             result = analyze_image(camera_path, question or "请描述摄像头画面中的内容")
             print("[提示] 分析完成")
             return result
-        
+
     except Exception as e:
         return f"错误: 摄像头捕获失败 - {e}"
     finally:

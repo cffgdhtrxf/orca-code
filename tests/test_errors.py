@@ -1,11 +1,12 @@
 """Tests for core/errors.py — error classification and retry logic."""
 
 import pytest
+
 from orca_code.core.errors import (
     ErrorCategory,
     classify_error,
-    friendly_error_message,
     execute_with_retry,
+    friendly_error_message,
 )
 
 

@@ -1,18 +1,95 @@
 
-import os, sys, subprocess, shutil, threading, time
+import shutil
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
-from typing import Optional, Dict
-from orca_code.config import (CONFIG, ENABLE_GUI_AUTO,
-    ENABLE_BROWSER_AUTO, TEMP_DIR, OUTPUT_DIR, ensure_pkg, console)
+
+from orca_code.config import (
+    ENABLE_BROWSER_AUTO,
+    ENABLE_GUI_AUTO,
+    OUTPUT_DIR,
+    TEMP_DIR,
+    console,
+    ensure_pkg,
+)
 from orca_code.security import is_safe_url
 
 """orca_code.tools_automation — GUI + browser automation."""
 
+# ─── GUI confirmation settings ──────────────────────────────────────────────
+_GUI_CONFIRM_TIMEOUT = 15  # seconds before auto-deny
+_GUI_CONFIRM_COOLDOWN = {}  # tool_name → last_approved_time
+_GUI_COOLDOWN_SECONDS = 30  # re-prompt after this many seconds
+
 
 def _gui_confirm(action: str, detail: str) -> bool:
+    """Request user confirmation before executing a GUI automation action.
+
+    On Windows, uses a MessageBox with timeout (auto-deny after 15s).
+    Falls back to console prompt on non-Windows platforms.
+
+    Cooldown: if the user approved the same action type within
+    _GUI_COOLDOWN_SECONDS, auto-approve without re-prompting.
+    """
     if not ENABLE_GUI_AUTO:
         return False
-    return True
+
+    # Cooldown check: same action type recently approved → skip prompt
+    now = time.time()
+    last = _GUI_CONFIRM_COOLDOWN.get(action, 0)
+    if now - last < _GUI_COOLDOWN_SECONDS:
+        return True
+
+    # Build prompt message
+    msg = (
+        f"⚠️  GUI Automation Request\n\n"
+        f"Action: {action}\n"
+        f"Detail: {detail}\n\n"
+        f"Allow this operation?\n"
+        f"(Auto-deny in {_GUI_CONFIRM_TIMEOUT}s)"
+    )
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            # MB_YESNO = 4, MB_ICONWARNING = 0x30, MB_TOPMOST = 0x40000
+            # MB_TIMEDOUT = 32000 (returned when MessageBox times out)
+            flags = 4 | 0x30 | 0x40000
+            # Use MessageBoxTimeoutW (undocumented but stable since XP)
+            result = ctypes.windll.user32.MessageBoxTimeoutW(
+                0, msg, "Orca Code — GUI Permission",
+                flags, 0, _GUI_CONFIRM_TIMEOUT * 1000
+            )
+            # IDYES = 6, IDNO = 7, IDTIMEOUT = 32000
+            if result == 6:  # IDYES
+                _GUI_CONFIRM_COOLDOWN[action] = now
+                return True
+            return False
+        except Exception:
+            pass  # Fall through to console prompt
+
+    # Console fallback (non-Windows or ctypes failed)
+    console.print(f"\n[yellow]⚠️  GUI: {action}[/yellow]")
+    console.print(f"  [dim]{detail}[/dim]")
+    console.print(f"  [dim][y]es / [n]o (auto-deny in {_GUI_CONFIRM_TIMEOUT}s)[/dim] ", end="")
+
+    try:
+        import select
+        import sys as _sys
+        _sys.stdout.flush()
+        r, _, _ = select.select([_sys.stdin], [], [], _GUI_CONFIRM_TIMEOUT)
+        if r:
+            ch = _sys.stdin.readline().strip().lower()
+            if ch in ('y', 'yes'):
+                _GUI_CONFIRM_COOLDOWN[action] = now
+                return True
+        console.print()
+    except Exception:
+        pass
+
+    return False
 def gui_click(x: int, y: int, button: str = "left", clicks: int = 1) -> str:
     if not ENABLE_GUI_AUTO:
         return "错误: GUI 自动化未启用（enable_gui_auto: false）"
@@ -38,6 +115,9 @@ def gui_type(text: str, interval: float = 0.01) -> str:
     if any(p in text.lower() for p in _hotkey_patterns):
         return ("错误: gui_type 只能输入纯文本，不能发送快捷键。"
                 "请使用 gui_hotkey 工具，例如 gui_hotkey(keys=['win','s']) 打开搜索。")
+    preview = text[:50] + ("..." if len(text) > 50 else "")
+    if not _gui_confirm("键盘输入", f"文本: {preview} ({len(text)} 字符)"):
+        return "操作已取消（用户未确认或超时）"
     if not ensure_pkg("pyautogui"):
         return "错误: 缺少 pyautogui (pip install pyautogui)"
     import pyautogui
@@ -75,6 +155,8 @@ def gui_press(key: str) -> str:
     """Press a single key like enter, tab, escape, backspace. For combo keys use gui_hotkey."""
     if not ENABLE_GUI_AUTO:
         return "错误: GUI 自动化未启用（enable_gui_auto: false）"
+    if not _gui_confirm("按键", f"按键: {key}"):
+        return "操作已取消（用户未确认或超时）"
     if not ensure_pkg("pyautogui"):
         return "错误: 缺少 pyautogui (pip install pyautogui)"
     import pyautogui
@@ -107,6 +189,8 @@ def gui_hotkey(keys: list) -> str:
 def gui_move(x: int, y: int, duration: float = 0.5) -> str:
     if not ENABLE_GUI_AUTO:
         return "错误: GUI 自动化未启用（enable_gui_auto: false）"
+    if not _gui_confirm("鼠标移动", f"目标: ({x}, {y}), 耗时: {duration}s"):
+        return "操作已取消（用户未确认或超时）"
     try:
         import pyautogui
     except ImportError:
@@ -124,6 +208,8 @@ def window_focus(title: str) -> str:
     """Find a window by title (partial match) and bring it to foreground."""
     if not ENABLE_GUI_AUTO:
         return "错误: GUI 自动化未启用（enable_gui_auto: false）"
+    if not _gui_confirm("窗口切换", f"目标窗口: {title}"):
+        return "操作已取消（用户未确认或超时）"
     try:
         import pygetwindow as gw
     except ImportError:
@@ -146,11 +232,15 @@ def find_on_screen(description: str) -> str:
     """Screenshot → OCR → find text/button coordinates. Returns positions of matching UI elements."""
     if not ENABLE_GUI_AUTO:
         return "错误: GUI 自动化未启用（enable_gui_auto: false）"
+    if not _gui_confirm("屏幕识别", f"搜索文字: {description}"):
+        return "操作已取消（用户未确认或超时）"
     try:
-        import mss, pyautogui
+        import mss
+        import pyautogui
     except ImportError:
         if ensure_pkg("mss"):
-            import mss, pyautogui
+            import mss
+            import pyautogui
         else:
             return "错误: 缺少 mss (pip install mss)"
     try:
@@ -189,7 +279,7 @@ def find_on_screen(description: str) -> str:
 
 _browser_lock = threading.Lock()
 _browser_instance = None
-def _get_browser() -> Optional[Dict]:
+def _get_browser() -> dict | None:
     with _browser_lock:
         return _browser_instance
 def browser_open(url: str, headless: bool = False) -> str:

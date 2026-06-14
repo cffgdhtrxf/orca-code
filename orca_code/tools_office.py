@@ -1,7 +1,12 @@
 
-import os, sys, json, time, logging, threading
+import json
+import logging
+import sys
+import threading
+import time
 from pathlib import Path
-from orca_code.config import (CONFIG, TEMP_DIR, OUTPUT_DIR, ensure_pkg, console)
+
+from orca_code.config import OUTPUT_DIR, ensure_pkg
 from orca_code.utils import _validate_write_path
 
 """orca_code.tools_office — Excel, Word, screenshot, OCR."""
@@ -109,10 +114,10 @@ def write_word(path: str, content: str, title: str = None) -> str:
         return f"错误: {e}"
 def take_screenshot(window_title: str = None, save_path: str = None) -> str:
     try:
-        from PIL import ImageGrab, Image
+        from PIL import Image, ImageGrab
     except ImportError:
         if ensure_pkg("Pillow", "PIL"):
-            from PIL import ImageGrab, Image
+            from PIL import Image
         else:
             return "错误: 缺少 Pillow (pip install Pillow)"
 
@@ -126,7 +131,9 @@ def take_screenshot(window_title: str = None, save_path: str = None) -> str:
 
     if window_title and sys.platform == "win32":
         try:
-            import win32gui, win32ui, win32con
+            import win32con
+            import win32gui
+            import win32ui
 
             found_hwnd = None
             title_lower = window_title.lower()

@@ -12,11 +12,12 @@ This adapter extends OpenAICompatAdapter with DeepSeek-specific behaviors.
 from __future__ import annotations
 
 import json
-from typing import List
 
 from .base import (
-    ProviderAdapter, StreamRequestInput, ProviderRequest,
-    StreamEvent, StreamEventType,
+    ProviderRequest,
+    StreamEvent,
+    StreamEventType,
+    StreamRequestInput,
 )
 from .openai_compat import OpenAICompatAdapter
 
@@ -60,7 +61,7 @@ class DeepSeekAdapter(OpenAICompatAdapter):
         req.body = json.dumps(body, ensure_ascii=False)
         return req
 
-    def parse_stream_line(self, json_line: str) -> List[StreamEvent]:
+    def parse_stream_line(self, json_line: str) -> list[StreamEvent]:
         """Parse DeepSeek SSE line, handling reasoning_content extension."""
         if not json_line or json_line.strip() == "[DONE]":
             return [StreamEvent(type=StreamEventType.DONE)]
@@ -70,7 +71,7 @@ class DeepSeekAdapter(OpenAICompatAdapter):
         except json.JSONDecodeError:
             return []
 
-        events: List[StreamEvent] = []
+        events: list[StreamEvent] = []
         choices = data.get("choices", [])
 
         for choice in choices:

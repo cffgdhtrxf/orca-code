@@ -1,11 +1,13 @@
 """Tests for tools/tasks.py — Task scheduling tool class wrappers."""
 
-import pytest
+from orca_code.permissions import RiskLevel
 from orca_code.tools.base import ToolRegistry
 from orca_code.tools.tasks import (
-    AddTaskTool, ListTasksTool, RemoveTaskTool, register_tasks_tools,
+    AddTaskTool,
+    ListTasksTool,
+    RemoveTaskTool,
+    register_tasks_tools,
 )
-from orca_code.permissions import RiskLevel
 
 
 class TestTaskTools:

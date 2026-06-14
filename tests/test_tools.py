@@ -1,9 +1,7 @@
 """Tests for core tool implementations in orca_code.tools_core."""
 
-import pytest
-import tempfile
-from pathlib import Path
 
+import pytest
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # execute_command — security and PowerShell
@@ -215,9 +213,10 @@ class TestWriteFile:
         assert "禁止" in result or "沙箱" in result or "protected" in result.lower()
 
     def test_atomic_write_no_corruption(self):
-        from orca_code.tools_core import write_file
-        from orca_code.config import TEMP_DIR
         import uuid
+
+        from orca_code.config import TEMP_DIR
+        from orca_code.tools_core import write_file
         # Write to temp/ — resolve_tool_path uses bare filename for temp/
         name = f"test_atomic_{uuid.uuid4().hex[:8]}.txt"
         result = write_file(str(TEMP_DIR / name), "atomic content")
@@ -329,7 +328,7 @@ class TestEditFileBoundaries:
     @pytest.mark.parametrize("old,new,desc", REPLACEMENTS)
     def test_replacement_positions(self, tmp_path, old, new, desc):
         from orca_code.tools_core import edit_file
-        content = f"start\nmiddle\nend\n"
+        content = "start\nmiddle\nend\n"
         f = tmp_path / "test.txt"
         f.write_text(content, encoding="utf-8")
         result = edit_file(str(f), old, new)

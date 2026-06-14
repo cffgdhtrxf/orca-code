@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from orca_code.tools.base import Tool
 from orca_code.permissions import RiskLevel
+from orca_code.tools.base import Tool
 
 
 class AddTaskTool(Tool):

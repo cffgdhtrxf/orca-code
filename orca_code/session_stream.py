@@ -6,25 +6,86 @@ Extracted from session.py.
 from __future__ import annotations
 
 import json
+import sys
 import time
-import logging
-import inspect
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import openai
 import tenacity
-
 from rich.markdown import Markdown
 from rich.padding import Padding
 
-from orca_code.config import (MODEL, BASE_URL, API_KEY,
-    IS_DEEPSEEK, IS_LOCAL, IS_MULTIMODAL, USE_SIMPLE_PROMPT,
-    ENABLE_THINK_MODE, REASONING_EFFORT, MAX_OUTPUT_TOKENS,
+from orca_code.config import (
     CONTEXT_MAX_TOKENS,
-    MAX_WORKERS, client, console)
-from orca_code.utils import _sanitize_ansi, fix_truncated_json
-from orca_code.tool_registry import TOOLS, TOOL_MAP, run_tool
-from orca_code.session_messages import sanitize_messages, smart_trim_messages, _msg_tokens
+    ENABLE_THINK_MODE,
+    IS_DEEPSEEK,
+    IS_LOCAL,
+    IS_MULTIMODAL,
+    MAX_OUTPUT_TOKENS,
+    MAX_WORKERS,
+    MODEL,
+    REASONING_EFFORT,
+    USE_SIMPLE_PROMPT,
+    client,
+    console,
+)
+from orca_code.session_messages import (
+    _get_tools,
+    _msg_tokens,
+)
+from orca_code.session_ui import (
+    show_tool_call, show_tool_done, show_tool_result,
+    show_tool_progress, render_markdown_smart, render_diff,
+    render_error_block, flash_status,
+)
+from orca_code.tool_registry import run_tool
+from orca_code.utils import _sanitize_ansi, _sanitize_surrogates, fix_truncated_json
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Streaming flow control constants (P2-23)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Chunk batching: collect small chunks before sending to reduce overhead.
+STREAM_CHUNK_BATCH_MS = 16
+STREAM_CHUNK_MIN_CHARS = 4
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Prompt caching (P2-26) — reduce token usage by caching the system prompt
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import hashlib as _hashlib
+_last_system_prompt_hash: str = ""
+_prompt_version: int = 0
+
+
+def _hash_system_prompt(messages: list[dict]) -> str:
+    """Compute a hash of the system prompt for cache tracking."""
+    for m in messages:
+        if m.get("role") == "system":
+            content = str(m.get("content", ""))
+            return _hashlib.sha256(content.encode()).hexdigest()[:16]
+    return ""
+
+
+def check_prompt_changed(messages: list[dict]) -> bool:
+    """Check if the system prompt has changed since the last call.
+
+    Returns True if changed (or first call), False if unchanged.
+    Clients can use this to decide whether to use prompt caching.
+    """
+    global _last_system_prompt_hash, _prompt_version
+    current = _hash_system_prompt(messages)
+    if current and current != _last_system_prompt_hash:
+        _last_system_prompt_hash = current
+        _prompt_version += 1
+        return True
+    return False
+
+
+def get_prompt_version() -> int:
+    """Get the current prompt version (increments when prompt changes)."""
+    return _prompt_version
 
 
 def call_model(messages):
@@ -96,7 +157,25 @@ def call_model(messages):
     def _create_with_retry(_kwargs):
         return client.chat.completions.create(**_kwargs)
 
-    return _create_with_retry(kwargs)
+    result = _create_with_retry(kwargs)
+
+    # ── P2-38: Track rate usage ─────────────────────────────────────────
+    try:
+        from orca_code.rate_tracker import get_rate_tracker
+        tracker = get_rate_tracker()
+        usage = getattr(result, "usage", None)
+        if usage:
+            inp = getattr(usage, "prompt_tokens", 0) or 0
+            out = getattr(usage, "completion_tokens", 0) or 0
+            cached = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
+            tracker.record_call(input_tokens=inp, output_tokens=out,
+                              model=kwargs.get("model", ""), cached_tokens=cached)
+    except Exception:
+        pass
+
+    return result
+
+
 def process_stream(stream):
     reasoning_full = ""
     answer_full = ""
@@ -105,10 +184,6 @@ def process_stream(stream):
     thinking_started = False
     t_answer_start = None
     answer_status = None
-    # Track streaming markdown for live rendering
-    from rich.live import Live
-    from rich.spinner import Spinner
-    live_display = None
 
     for chunk in stream:
         if not chunk.choices:
@@ -119,14 +194,24 @@ def process_stream(stream):
         delta = chunk.choices[0].delta
 
         if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+            # Sanitize surrogates at the source
+            safe_content = _sanitize_surrogates(delta.reasoning_content)
             if not thinking_started:
                 console.print()
-                # Rich native dim/italic thinking indicator
-                console.print("[dim italic]💭 ", end="")
+                # [F18] ANSI italic dim for thinking display
+                try:
+                    sys.stdout.write("\033[2;90;3m💭 ")
+                    sys.stdout.flush()
+                except UnicodeEncodeError:
+                    pass
                 thinking_started = True
-            display = _sanitize_ansi(delta.reasoning_content.replace("\n", "\n  "))
-            console.print(f"[dim italic]{display}[/dim italic]", end="")
-            reasoning_full += delta.reasoning_content
+            display = _sanitize_ansi(safe_content.replace("\n", "\n  "))
+            try:
+                sys.stdout.write(display)
+                sys.stdout.flush()
+            except UnicodeEncodeError:
+                pass
+            reasoning_full += safe_content
 
         if delta.tool_calls:
             for tc in delta.tool_calls:
@@ -148,33 +233,34 @@ def process_stream(stream):
                 t_answer_start = time.time()
                 if thinking_started:
                     console.print()
-                # Use Rich Live for streaming markdown preview
-                live_display = Live(
-                    Markdown("", code_theme="monokai"),
-                    console=console,
-                    refresh_per_second=8,
-                    transient=False,
+                answer_status = console.status(
+                    "[dim]生成中... 0 字[/dim]",
+                    spinner="dots", spinner_style="bright_black",
                 )
-                live_display.start()
-            answer_full += delta.content
+                answer_status.start()
+            # Sanitize surrogates at the source
+            safe_content = _sanitize_surrogates(delta.content)
+            answer_full += safe_content
             elapsed = time.time() - t_answer_start
-            # Update the live display with partial markdown
-            if live_display:
-                status_line = f"[dim]⏳ {len(answer_full)} 字"
-                if elapsed >= 1:
-                    status_line += f" · {elapsed:.0f}s"
-                status_line += "[/dim]\n\n"
-                live_display.update(Markdown(status_line + answer_full, code_theme="monokai"))
+            label = f"[dim]生成中... {len(answer_full)} 字"
+            if elapsed >= 1:
+                label += f" · {elapsed:.0f}s"
+            answer_status.update(label + "[/dim]")
 
     if reasoning_full:
+        from orca_code.session import session
         session.last_thinking = reasoning_full
 
-    # Clean up thinking display
+    # [F18] Reset ANSI after thinking
     if thinking_started:
-        console.print()
+        try:
+            sys.stdout.write("\033[0m\n")
+            sys.stdout.flush()
+        except UnicodeEncodeError:
+            pass
 
-    if live_display is not None:
-        live_display.stop()
+    if answer_status is not None:
+        answer_status.stop()
 
     if answer_full:
         console.print("[bold white]●[/bold white] ", end="")
@@ -185,7 +271,7 @@ def process_stream(stream):
 
     return reasoning_full, answer_full, tool_calls_by_index, usage
 def execute_tool_calls(tool_calls_by_index):
-    from orca_code.tool_registry import run_tool
+    from orca_code.session import session
     items = []
     for idx in sorted(tool_calls_by_index.keys()):
         tc = tool_calls_by_index[idx]
@@ -209,6 +295,7 @@ def execute_tool_calls(tool_calls_by_index):
 
     if len(items) == 1:
         idx, tc, fn_name, fn_args = items[0]
+        show_tool_progress(fn_name, fn_args, "running")
         t0 = time.time()
         try:
             result = run_tool(fn_name, fn_args)
@@ -218,6 +305,7 @@ def execute_tool_calls(tool_calls_by_index):
         except KeyboardInterrupt:
             result = "(interrupted)"
             elapsed = (time.time() - t0) * 1000
+            flash_status("工具执行已中断", "yellow")
         session.tool_calls += 1
         return (
             [{"id": tc["id"], "type": "function",
@@ -228,6 +316,9 @@ def execute_tool_calls(tool_calls_by_index):
     items_by_idx = {idx: (fn, args) for idx, tc, fn, args in items}
     results_map = {}
     t0 = time.time()
+    # Show progress for all tools
+    for idx, (fn, args) in items_by_idx.items():
+        show_tool_progress(fn, args, "running")
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(items))) as ex:
         future_to_idx = {}
         for idx, (fn, args) in items_by_idx.items():

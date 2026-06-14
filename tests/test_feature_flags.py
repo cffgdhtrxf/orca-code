@@ -1,6 +1,5 @@
 """Tests for infrastructure/feature_flags.py."""
 
-import pytest
 from orca_code.infrastructure.feature_flags import FeatureFlags
 
 

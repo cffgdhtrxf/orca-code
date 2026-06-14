@@ -11,10 +11,10 @@ Usage:
 
 from __future__ import annotations
 
-import time
 import threading
+import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class MetricsCollector:
@@ -26,9 +26,9 @@ class MetricsCollector:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._pending: Dict[str, float] = {}  # event_id → start_time
-        self._timings: Dict[str, List[float]] = defaultdict(list)  # tool_name → [elapsed_ms]
-        self._errors: Dict[str, int] = defaultdict(int)  # tool_name → error_count
+        self._pending: dict[str, float] = {}  # event_id → start_time
+        self._timings: dict[str, list[float]] = defaultdict(list)  # tool_name → [elapsed_ms]
+        self._errors: dict[str, int] = defaultdict(int)  # tool_name → error_count
         self._total_calls = 0
         self._total_errors = 0
         self._session_start = time.time()
@@ -61,7 +61,7 @@ class MetricsCollector:
             self._total_calls += 1
             self._total_errors += 1
 
-    def get_tool_stats(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def get_tool_stats(self, tool_name: str) -> dict[str, Any] | None:
         """Get statistics for a specific tool."""
         with self._lock:
             timings = self._timings.get(tool_name, [])
@@ -79,7 +79,7 @@ class MetricsCollector:
                 "avg_ms": sum(timings) / len(timings),
             }
 
-    def get_all_stats(self) -> List[Dict[str, Any]]:
+    def get_all_stats(self) -> list[dict[str, Any]]:
         """Get statistics for all tools, sorted by call count descending."""
         with self._lock:
             stats = []
@@ -90,13 +90,13 @@ class MetricsCollector:
             stats.sort(key=lambda x: x["calls"], reverse=True)
             return stats
 
-    def get_top_slowest(self, n: int = 5) -> List[Dict[str, Any]]:
+    def get_top_slowest(self, n: int = 5) -> list[dict[str, Any]]:
         """Get the N slowest tools by p95 latency."""
         stats = self.get_all_stats()
         stats.sort(key=lambda x: x["p95_ms"], reverse=True)
         return stats[:n]
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get a session-level summary."""
         with self._lock:
             elapsed = time.time() - self._session_start
@@ -123,7 +123,7 @@ class MetricsCollector:
         Subscribes to TOOL_START, TOOL_RESULT, TOOL_ERROR events.
         Returns self for chaining.
         """
-        from orca_code.core.event_bus import get_event_bus, EventType
+        from orca_code.core.event_bus import EventType, get_event_bus
 
         if bus is None:
             bus = get_event_bus()
@@ -159,7 +159,7 @@ class MetricsCollector:
 
 # ─── Singleton ───────────────────────────────────────────────────────────────
 
-_collector: Optional[MetricsCollector] = None
+_collector: MetricsCollector | None = None
 _collector_lock = threading.Lock()
 
 
@@ -175,7 +175,7 @@ def get_metrics_collector() -> MetricsCollector:
 
 # ─── Math helper ─────────────────────────────────────────────────────────────
 
-def _percentile(data: List[float], percentile: float) -> float:
+def _percentile(data: list[float], percentile: float) -> float:
     """Compute the percentile using linear interpolation."""
     if not data:
         return 0.0

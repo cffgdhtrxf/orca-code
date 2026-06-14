@@ -6,11 +6,8 @@ This provides the class-based interface while reusing proven implementations.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
-
-from orca_code.tools.base import Tool
 from orca_code.permissions import RiskLevel
+from orca_code.tools.base import Tool
 
 
 class ReadFileTool(Tool):

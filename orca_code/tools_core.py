@@ -1,14 +1,19 @@
 
-import os, sys, re, subprocess, shlex, platform, getpass
+import getpass
 import glob as glob_mod
-from pathlib import Path
-from datetime import datetime
 import logging
-from orca_code.config import (CONFIG, API_KEY, BASE_URL, MODEL,
-    CMD_TIMEOUT, SILENT_CMD, WORKING_DIR, SCRIPT_DIR, TERM_WIDTH, CONFIG_JSON, console,
-    PERMISSION_MODE)
-from orca_code.utils import _detect_encoding, _validate_write_path, _estimate_tokens
-from orca_code.security import check_command_safety
+import os
+import platform
+import re
+import shlex
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from orca_code.config import CMD_TIMEOUT, CONFIG_JSON, PERMISSION_MODE, SILENT_CMD, WORKING_DIR
+from orca_code.security import check_command_safety, check_mode_command
+from orca_code.utils import _detect_encoding, _validate_write_path
 
 """orca_code.tools_core — Core tools: execute, read, write, list, search."""
 
@@ -51,12 +56,34 @@ def get_system_info() -> str:
     return "\n".join(lines)
 def get_env_summary() -> str:
     return f"[系统环境摘要]\n{get_system_info()}\n配置文件: {CONFIG_JSON.absolute()}"
-def execute_command(command: str, working_dir: str = None) -> str:
+def execute_command(command: str, working_dir: str = None, use_session: bool = False) -> str:
+    """Execute a shell command.
+
+    Args:
+        command: The command to execute.
+        working_dir: Working directory for this command.
+        use_session: If True, run in a persistent shell session that keeps
+                     env vars, cwd, and aliases across calls (P2-40).
+    """
     # Layer 0 safety net (always-on, even in YOLO)
     is_yolo = PERMISSION_MODE.value == "yolo"
     safe, reason = check_command_safety(command, yolo=is_yolo)
     if not safe:
         return f"SECURITY BLOCK: {reason}"
+
+    # Layer 0.5 mode-based command check (read-only/auto restrictions)
+    safe, reason = check_mode_command(command, PERMISSION_MODE)
+    if not safe:
+        return f"SECURITY BLOCK: {reason}"
+
+    # ── P2-40: Persistent shell session ──────────────────────────────────
+    if use_session:
+        try:
+            from orca_code.shell_session import get_shell_session
+            shell = get_shell_session()
+            return shell.run(command, timeout=CMD_TIMEOUT, cwd=working_dir)
+        except Exception:
+            pass  # Fall through to normal execution
     # All Windows cmd built-ins are allowed; wrap with cmd /c
     _CMD_BUILTINS = {"type", "dir", "echo", "ver", "date", "time", "cd", "cls",
                      "copy", "start", "del", "move", "ren", "mkdir", "rmdir", "set"}
@@ -160,9 +187,11 @@ def write_file(path: str, content: str) -> str:
         logging.error(f"write_file error: {e}")
         return f"错误: {e}"
 
-def edit_file(path: str, old_string: str, new_string: str) -> str:
-    """精确字符串替换。old_string必须在文件中唯一出现（或通过occurrence参数指定第几次出现）。
-    类似Claude Code的Edit工具——用于局部修改，避免全量重写整个文件。"""
+def edit_file(path: str, old_string: str, new_string: str, hashline: str | None = None) -> str:
+    """精确字符串替换。old_string必须在文件中唯一出现。
+
+    支持 hashline 锚定（P1-10）：提供 "L3:hash" → 验证对应行的内容哈希，
+    如果文件已更改则拒绝修改（stale anchor detection）。"""
     p = Path(path)
     if not p.exists():
         return f"错误: 文件不存在 - {path}"
@@ -175,6 +204,28 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         original = p.read_text(encoding=enc, errors="replace")
     except Exception as e:
         return f"错误: 读取文件失败 - {e}"
+
+    # ── P1-10: Hashline validation ────────────────────────────────────────
+    if hashline:
+        lines = original.split("\n")
+        for entry in hashline.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                # Format: "L<num>:<hash>" — e.g. "L42:a1b2c3"
+                if ":" not in entry:
+                    continue
+                prefix, expected_hash = entry.split(":", 1)
+                line_num = int(prefix.lstrip("L")) - 1  # 1-based → 0-based
+                if 0 <= line_num < len(lines):
+                    actual_hash = _hash_line(lines[line_num])
+                    if actual_hash[:6] != expected_hash[:6]:
+                        return (f"错误: hashline 锚定失败 — 第{line_num + 1}行内容已更改。"
+                                f" 期望 {expected_hash[:6]}，实际 {actual_hash[:6]}。"
+                                f" 文件可能已被修改，请重新读取后重试。")
+            except (ValueError, IndexError):
+                pass  # invalid hashline entry, skip
 
     count = original.count(old_string)
     if count == 0:
@@ -214,10 +265,17 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         pass
     return f"已编辑 {path}: 1处替换 ({len(old_string)}→{len(new_string)}字符)"
 
+
+def _hash_line(line: str) -> str:
+    """Compute a short content hash for a single line (FNV-1a based)."""
+    h = 0x811c9dc5
+    for ch in line:
+        h = ((h ^ ord(ch)) * 0x01000193) & 0xFFFFFFFF
+    return f"{h:08x}"
+
 def apply_diff(path: str, diff_text: str) -> str:
     """应用unified diff到文件。支持标准diff格式（git diff / diff -u输出）。
     每个hunk独立应用，失败时回退整个文件。"""
-    import json
     p = Path(path)
     if not p.exists():
         return f"错误: 文件不存在 - {path}"
@@ -230,7 +288,6 @@ def apply_diff(path: str, diff_text: str) -> str:
         pass
 
     # Pure Python fallback
-    import re
     try:
         enc = _detect_encoding(path)
         original = p.read_text(encoding=enc, errors="replace")

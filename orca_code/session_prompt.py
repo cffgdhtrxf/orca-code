@@ -1,19 +1,42 @@
 """orca_code.session_prompt — System prompt construction.
 
-Extracted from session.py.
+Extracted from session.py. Supports both inline (legacy) and template-based
+prompt construction via infrastructure/prompt_loader.
 """
 
 from __future__ import annotations
 
+import getpass
 import json
 import logging
+import platform as _platform
+from datetime import datetime
 
-from orca_code.config import (MODEL, BASE_URL, IS_DEEPSEEK, IS_LOCAL, IS_MULTIMODAL,
-    USE_SIMPLE_PROMPT, ENABLE_THINK_MODE, REASONING_EFFORT, MAX_OUTPUT_TOKENS,
-    PERSONA, HAS_MEMORY, mem_mgr)
-from orca_code.utils import _estimate_tokens
-from orca_code.constitution import inject_constitution
+from orca_code.config import (
+    BASE_URL,
+    CONTEXT_MAX_TOKENS,
+    HAS_MEMORY,
+    IS_DEEPSEEK,
+    IS_LOCAL,
+    IS_MULTIMODAL,
+    MAX_OUTPUT_TOKENS,
+    MODEL,
+    PERSONA,
+    REASONING_EFFORT,
+    USE_SIMPLE_PROMPT,
+    WORKING_DIR,
+    mem_mgr,
+)
+from orca_code.constitution import get_constitution, inject_constitution
 from orca_code.tool_registry import TOOLS
+from orca_code.utils import _estimate_tokens
+
+# Optional: template-based prompt loading (new system)
+try:
+    from orca_code.infrastructure.prompt_loader import load_prompt
+    _HAS_TEMPLATES = True
+except ImportError:
+    _HAS_TEMPLATES = False
 
 
 def build_system_prompt() -> str:
@@ -114,6 +137,82 @@ _CACHED_PREFIX_TOKENS = None
 def _estimate_prefix_tokens() -> int:
     global _CACHED_PREFIX_TOKENS
     if _CACHED_PREFIX_TOKENS is None:
-        text = build_system_prompt() + json.dumps(_get_tools(), ensure_ascii=False)
+        text = build_system_prompt() + json.dumps(TOOLS, ensure_ascii=False)
         _CACHED_PREFIX_TOKENS = _estimate_tokens(text)
     return _CACHED_PREFIX_TOKENS
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Template-based prompt builder (v2)
+# Uses orca_code/prompts/*.md templates when available.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _get_template_vars() -> dict:
+    """Build the common template variable dict."""
+    profile = PERSONA or ""
+    if HAS_MEMORY and mem_mgr:
+        try:
+            learned = mem_mgr.get_meta("user_profile")
+            if learned:
+                if profile:
+                    profile += "\n" + learned
+                else:
+                    profile = learned
+        except Exception:
+            pass
+
+    return {
+        "constitution": get_constitution(),
+        "platform": _platform.system(),
+        "platform_release": _platform.release(),
+        "username": getpass.getuser(),
+        "working_dir": str(WORKING_DIR),
+        "current_date": datetime.now().strftime("%Y-%m-%d %A"),
+        "tool_count": str(len(TOOLS)),
+        "persona": profile if profile else "(none)",
+        "user_profile": "",
+        "model": MODEL,
+        "base_url": BASE_URL,
+        "is_multimodal": str(IS_MULTIMODAL).lower(),
+        "max_output_tokens": str(MAX_OUTPUT_TOKENS),
+        "context_max_tokens": str(CONTEXT_MAX_TOKENS),
+        "reasoning_effort": REASONING_EFFORT,
+        "high": REASONING_EFFORT == "high",
+        "medium": REASONING_EFFORT == "medium",
+    }
+
+
+def build_system_prompt_v2() -> str | None:
+    """Build system prompt from templates. Returns None if templates unavailable.
+
+    Uses template-based prompts from orca_code/prompts/ instead of inline strings.
+    The template system supports per-model variants and variable substitution.
+    """
+    if not _HAS_TEMPLATES:
+        return None
+
+    try:
+        vars_dict = _get_template_vars()
+
+        # Select template based on model type
+        if USE_SIMPLE_PROMPT:
+            template_name = "system/simple"
+        elif IS_DEEPSEEK:
+            template_name = "system/deepseek"
+        else:
+            template_name = "system/base"
+
+        prompt = load_prompt(template_name, **vars_dict)
+
+        # Inject model identity line
+        prompt += (
+            f"\n\nRunning as: {MODEL} | Base URL: {BASE_URL} | "
+            f"Local: {IS_LOCAL} | Multimodal: {IS_MULTIMODAL}."
+        )
+
+        # Inject Constitution as cached prefix
+        return inject_constitution(prompt)
+
+    except Exception as e:
+        logging.debug("Template prompt loading failed: %s, falling back to inline", e)
+        return None

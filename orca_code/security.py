@@ -13,13 +13,10 @@ Layered security model:
     Restricts user-authored skill scripts to a safe subset of Python.
 """
 
-import re
-import ipaddress
-import urllib.parse
 import ast as _ast
-from pathlib import Path
-from typing import Optional, Tuple
-
+import ipaddress
+import re
+import urllib.parse
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Layer 0 — Always-On Safety Net
@@ -51,6 +48,33 @@ _ALWAYS_BLOCKED = [
     (r'(?i)\s-EncodedCommand\s', "Encoded PowerShell command (bypass risk)"),
     (r'(?i)\s-enc\s', "Encoded PowerShell command (bypass risk)"),
     (r'(?i)\s-e\s+\S{20,}', "Encoded PowerShell command (bypass risk)"),
+
+    # ── Windows-specific always-blocked patterns ──
+    # Recursive/forced deletion of entire drives
+    (r'(?i)\bdel\s+/[sfq]\s+[A-Z]:\\', "Windows recursive drive delete (del /s /f C:\\)"),
+    (r'(?i)\brmdir\s+/[sq]\s+[A-Z]:\\', "Windows recursive drive removal (rmdir /s C:\\)"),
+    (r'(?i)\b(rd|rmdir)\s+/s\s+/q\s+%[A-Z_]+%', "Windows recursive env-var removal"),
+    # Format command
+    (r'(?i)\bformat\s+[A-Z]:\s*/', "Windows drive format (format C: /q)"),
+    # Diskpart (can destroy partitions)
+    (r'(?i)\bdiskpart\b.*\b(clean|delete|format)\b', "DiskPart destructive operation"),
+    # Registry deletion
+    (r'(?i)\breg\s+delete\s+HKLM', "Windows registry deletion (HKLM)"),
+    (r'(?i)\breg\s+delete\s+/f\s+HK', "Windows registry forced deletion"),
+    # BCDEdit tampering
+    (r'(?i)\bbcdedit\s+/delete', "Windows boot configuration deletion"),
+    # WMIC destructive
+    (r'(?i)\bwmic\s+.*\bdelete\b', "WMIC delete operation"),
+    # Schtasks persistence
+    (r'(?i)\bschtasks\s+/create\s+/sc\s+onstart', "Scheduled task persistence"),
+    # Network exfiltration to common paste / file-drop sites
+    (r'(?i)\b(nc|netcat|ncat)\b.*-e\s', "Netcat reverse shell (-e flag)"),
+
+    # ── Linux specific always-blocked ──
+    # echo to kernel params
+    (r'(?i)\becho\s+.*>\s*/proc/sys/', "Writing to kernel parameters"),
+    # chattr immutable
+    (r'(?i)\bchattr\s+\+i\s+/', "Filesystem attribute tampering (chattr +i /)"),
 ]
 
 # Commands that are blocked only in read-only and auto modes (not YOLO)
@@ -65,10 +89,27 @@ _AUTO_BLOCKED = [
 
     # Write to system paths
     (r'(?i)\b(write|cp|mv|cat|tee)\s+.*/(etc|boot|bin|lib|sys|proc|dev)/', "System path write"),
+
+    # Windows: write to system directories
+    (r'(?i)\b(copy|move|xcopy|robocopy)\s+.*%windir%', "Windows system directory write"),
+    (r'(?i)\b(copy|move|xcopy|robocopy)\s+.*C:\\Windows', "Windows system directory write"),
+    (r'(?i)\b(copy|move|xcopy|robocopy)\s+.*Program Files', "Program Files write"),
+
+    # Package managers (can install/replace system packages)
+    (r'(?i)\b(apt-get|apt|yum|dnf|pacman|zypper)\s+install\b', "Package manager install"),
+    (r'(?i)\b(pip|npm|cargo)\s+install\s+-g\b', "Global package install (requires root)"),
+
+    # Docker privileged
+    (r'(?i)\bdocker\s+run\s+.*--privileged\b', "Docker privileged container"),
+    (r'(?i)\bdocker\s+run\s+.*-v\s+/:/', "Docker mount root filesystem"),
+
+    # Download + execute patterns
+    (r'(?i)\b(iwr|Invoke-WebRequest)\s+.*\|\s*iex\b', "PowerShell download + execute (IWR|IEX)"),
+    (r'(?i)\bwget\s+.*-O\s+-\s*\|\s*(ba)?sh\b', "wget pipe to shell"),
 ]
 
 
-def check_command_safety(command: str, yolo: bool = False) -> Tuple[bool, str]:
+def check_command_safety(command: str, yolo: bool = False) -> tuple[bool, str]:
     """Check if a shell command is safe to execute.
 
     Returns (is_safe: bool, reason: str).
@@ -88,7 +129,112 @@ def check_command_safety(command: str, yolo: bool = False) -> Tuple[bool, str]:
     return True, ""
 
 
-def is_safe_url(url: str) -> Tuple[bool, str]:
+# ═══════════════════════════════════════════════════════════════════════════════
+# Two-Dimensional Command Whitelist
+# Mode × CommandType — restricts which commands are allowed based on
+# permission mode and the command's risk category.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Read-only safe commands (data viewing, no mutation)
+_READ_SAFE_COMMANDS = {
+    # Unix
+    "ls", "cat", "head", "tail", "less", "file", "stat",
+    "find", "grep", "rg", "wc", "sort", "uniq", "cut", "tr",
+    "pwd", "whoami", "id", "groups", "env", "printenv",
+    "date", "uptime", "uname", "hostname", "which", "whereis",
+    "git", "hg", "du", "df", "awk", "sed",  # sed/awk are read-only by default
+    "diff", "cmp", "comm", "xxd", "hexdump",
+    # Windows
+    "dir", "type", "echo", "ver", "time",
+    "where", "systeminfo",
+    "tasklist", "net", "ipconfig", "ping", "tracert", "nslookup",
+    "findstr", "fc", "comp", "tree",
+    # Common
+    "python", "python3", "node", "npm", "npx",  # used for --version/--help
+    "pip", "cargo", "rustc", "go", "java", "javac",
+    "make", "cmake", "ninja", "meson",
+    "docker", "kubectl", "helm", "terraform",
+}
+
+# Write-safe commands (data-mutating but not system-destroying)
+_WRITE_SAFE_COMMANDS = {
+    "mkdir", "touch", "cp", "mv", "rm", "rmdir",
+    "tar", "gzip", "zip", "unzip", "7z", "rar",
+    "chmod", "chown", "chgrp",
+    "ln", "readlink", "realpath",
+    "mount", "umount",
+    # Windows
+    "copy", "move", "del", "erase", "rename", "ren",
+    "md", "rd", "mklink",
+    "xcopy", "robocopy",
+    "attrib", "icacls", "takeown",
+    # Package managers
+    "pip", "npm", "cargo", "gem", "composer",
+    # Version control write ops
+    "git",
+    # Editors
+    "nano", "vim", "vi", "emacs", "code", "notepad",
+}
+
+
+def check_mode_command(command: str, permission_mode) -> tuple[bool, str]:
+    """Check if a command is allowed under the current permission mode.
+
+    This is an ADDITIONAL check on top of the safety net. The safety net
+    (check_command_safety) always runs first. This check runs second and
+    determines whether the command fits the current permission mode.
+
+    Args:
+        command: The shell command to check.
+        permission_mode: PermissionMode enum value.
+
+    Returns:
+        (is_allowed: bool, reason: str)
+    """
+    from orca_code.permissions import PermissionMode
+
+    # YOLO mode: anything goes (safety net still applies upstream)
+    if permission_mode == PermissionMode.YOLO:
+        return True, ""
+
+    # Extract base command
+    try:
+        import shlex
+        parts = shlex.split(command, posix=(__import__('sys').platform != "win32"))
+        if not parts:
+            return True, ""
+        base_cmd = __import__('pathlib').Path(parts[0]).name.lower()
+    except Exception:
+        return True, ""
+
+    # Strip common suffixes
+    for suffix in (".exe", ".cmd", ".bat", ".com", ".ps1"):
+        if base_cmd.endswith(suffix):
+            base_cmd = base_cmd[:-len(suffix)]
+
+    # READ_ONLY mode: only _READ_SAFE_COMMANDS
+    if permission_mode == PermissionMode.READ_ONLY:
+        if base_cmd in _READ_SAFE_COMMANDS:
+            return True, ""
+        return False, (
+            f"Command '{base_cmd}' not allowed in read-only mode.\n"
+            f"Allowed commands include: "
+            f"{', '.join(sorted(list(_READ_SAFE_COMMANDS)[:20]))}..."
+        )
+
+    # AUTO mode: READ + WRITE safe commands
+    if permission_mode == PermissionMode.AUTO:
+        if base_cmd in _READ_SAFE_COMMANDS or base_cmd in _WRITE_SAFE_COMMANDS:
+            return True, ""
+        return False, (
+            f"Command '{base_cmd}' requires explicit permission in auto mode.\n"
+            f"Use YOLO mode to allow all commands: /permissions mode yolo"
+        )
+
+    return True, ""
+
+
+def is_safe_url(url: str) -> tuple[bool, str]:
     """Validate a URL for web_fetch/read_webpage.
 
     Blocks:
@@ -168,7 +314,7 @@ _SKILL_SAFE_BUILTINS = {
 }
 
 
-def _scan_skill_ast(code: str, name: str) -> Optional[str]:
+def _scan_skill_ast(code: str, name: str) -> str | None:
     """Scan skill code for dangerous patterns. Returns error string or None."""
     try:
         tree = _ast.parse(code, filename=f"<skill:{name}>")
@@ -177,13 +323,13 @@ def _scan_skill_ast(code: str, name: str) -> Optional[str]:
 
     for node in _ast.walk(tree):
         if isinstance(node, (_ast.Import, _ast.ImportFrom)):
-            return f"Skill cannot import modules"
+            return "Skill cannot import modules"
 
         if isinstance(node, _ast.Attribute):
             if isinstance(node.attr, str) and node.attr in _SKILL_DANGEROUS_ATTRS:
                 return f"Skill cannot access: {node.attr}"
             if node.attr == '__import__':
-                return f"Skill cannot call __import__"
+                return "Skill cannot call __import__"
 
         if isinstance(node, _ast.Call):
             if isinstance(node.func, _ast.Name):

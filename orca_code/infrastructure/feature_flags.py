@@ -16,7 +16,7 @@ Usage:
 from __future__ import annotations
 
 import os
-from typing import ClassVar, Set
+from typing import ClassVar
 
 
 class FeatureFlags:
@@ -62,12 +62,12 @@ class FeatureFlags:
 
     # ─── Experimental ─────────────────────────────────────────────────────
     ENABLE_REMOTE_BRIDGE: ClassVar[bool] = False
-    ENABLE_MULTI_AGENT_ORCHESTRATOR: ClassVar[bool] = False
+    ENABLE_MULTI_AGENT_ORCHESTRATOR: ClassVar[bool] = True   # Phase 3: enabled
     ENABLE_AUTO_MEMORY_EXTRACT: ClassVar[bool] = False
 
     _initialized: ClassVar[bool] = False
-    _disabled_set: ClassVar[Set[str]] = set()
-    _enabled_set: ClassVar[Set[str]] = set()
+    _disabled_set: ClassVar[set[str]] = set()
+    _enabled_set: ClassVar[set[str]] = set()
 
     @classmethod
     def init(cls) -> None:
@@ -113,7 +113,7 @@ class FeatureFlags:
         return bool(getattr(cls, flag, False))
 
     @classmethod
-    def list_enabled(cls) -> Set[str]:
+    def list_enabled(cls) -> set[str]:
         """Return the set of all currently enabled feature flags."""
         return {
             attr for attr in dir(cls)
@@ -121,7 +121,7 @@ class FeatureFlags:
         }
 
     @classmethod
-    def list_disabled(cls) -> Set[str]:
+    def list_disabled(cls) -> set[str]:
         """Return the set of all currently disabled feature flags."""
         return {
             attr for attr in dir(cls)

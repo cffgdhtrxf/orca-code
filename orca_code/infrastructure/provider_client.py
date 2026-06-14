@@ -16,16 +16,15 @@ Usage in session.py:
 from __future__ import annotations
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 
-import openai
 from openai import OpenAI
 
-from orca_code.providers.registry import get_adapter, autodetect_provider, list_providers
+from orca_code.core.errors import classify_error
 from orca_code.providers.base import (
-    ProviderAdapter, StreamRequestInput, ToolDefinition,
+    ProviderAdapter,
 )
-from orca_code.core.errors import classify_error, ErrorCategory, friendly_error_message
+from orca_code.providers.registry import autodetect_provider, get_adapter, list_providers
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class ProviderAwareClient:
         api_key: str,
         base_url: str,
         model_name: str,
-        provider_type: Optional[str] = None,
+        provider_type: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -56,7 +55,7 @@ class ProviderAwareClient:
         self.provider_type = provider_type or autodetect_provider(base_url, model_name)
 
         # Get the adapter for this provider
-        self._adapter: Optional[ProviderAdapter] = None
+        self._adapter: ProviderAdapter | None = None
         try:
             self._adapter = get_adapter(self.provider_type)
         except KeyError:
@@ -74,7 +73,7 @@ class ProviderAwareClient:
         return _ProviderChatWrapper(self)
 
     @property
-    def adapter(self) -> Optional[ProviderAdapter]:
+    def adapter(self) -> ProviderAdapter | None:
         return self._adapter
 
     @property
@@ -140,7 +139,7 @@ def create_provider_client(
     api_key: str = "",
     base_url: str = "https://api.deepseek.com",
     model_name: str = "deepseek-chat",
-    provider_type: Optional[str] = None,
+    provider_type: str | None = None,
 ) -> ProviderAwareClient:
     """Factory function: create a provider-aware LLM client.
 
@@ -161,14 +160,14 @@ def create_provider_client(
     )
 
 
-def get_provider_info(client: ProviderAwareClient) -> Dict[str, Any]:
+def get_provider_info(client: ProviderAwareClient) -> dict[str, Any]:
     """Get diagnostic information about the current provider.
 
     Returns:
         Dict with keys: provider_type, model, base_url, thinking, multimodal,
         adapter_name.
     """
-    info: Dict[str, Any] = {
+    info: dict[str, Any] = {
         "provider_type": client.provider_type,
         "model": client.model_name,
         "base_url": client.base_url,
@@ -189,10 +188,10 @@ def get_provider_info(client: ProviderAwareClient) -> Dict[str, Any]:
 
 def _init_providers():
     """Register all built-in provider adapters. Called once on first import."""
-    from orca_code.providers.deepseek import DeepSeekAdapter
-    from orca_code.providers.openai_compat import OpenAICompatAdapter
     from orca_code.providers.anthropic_compat import AnthropicCompatAdapter
+    from orca_code.providers.deepseek import DeepSeekAdapter
     from orca_code.providers.local import LocalAdapter
+    from orca_code.providers.openai_compat import OpenAICompatAdapter
     from orca_code.providers.registry import register_adapter
 
     try:

@@ -4,6 +4,15 @@ TOOLS: List of OpenAI-format tool definitions (JSON schemas).
 TOOL_MAP: Dict mapping tool names to callable functions.
 run_tool(): Permission-checked tool dispatch.
 
+Architecture:
+  Root-level tools_*.py     — Canonical flat-function implementations (mature, stable).
+  orca_code/tools/ package  — Class-based Tool wrappers (new, inherits from Tool base).
+                               Each class delegates to root-level functions.
+
+  tool_registry.py imports from root-level tools_*.py directly.
+  The orca_code/tools/ package can be used via bridge.sync_from_legacy()
+  to populate a class-based registry for future expansion.
+
 This module breaks the circular dependency between main.py and its consumers
 (session.py, tools_skills.py, subagent.py, tts_mcp.py). All imports from this
 module are direct — no lazy-load workarounds needed.
@@ -15,37 +24,56 @@ lazy tuple markers are used to avoid import loops with main.py.
 from __future__ import annotations
 
 import inspect
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-# ─── Direct imports from non-circular tool modules ───────────────────────────
-from orca_code.tools_core import (
-    execute_command, read_file, write_file, edit_file, apply_diff,
-    list_files, search_files, search_content, get_system_info,
+from orca_code.lsp import lsp_definition, lsp_diagnostics, lsp_references
+from orca_code.subagent import agent_close, agent_eval, agent_open
+
+# ─── Canonical tool imports (root-level modules — mature implementations) ─────
+# These are the single source of truth for tool function implementations.
+# The orca_code/tools/ package wraps these in class-based Tool subclasses.
+from orca_code.tools_automation import (  # GUI + browser automation (7 tools)
+    browser_click, browser_close, browser_open,
+    browser_screenshot, browser_type,
+    find_on_screen,
+    gui_click, gui_hotkey, gui_move, gui_press, gui_type,
+    window_focus,
 )
-from orca_code.tools_office import (
-    read_excel, write_excel, read_word, write_word, take_screenshot, ocr_image,
+from orca_code.tools_core import (  # Core file & command tools (9 tools)
+    apply_diff, edit_file, execute_command, get_system_info,
+    list_files, read_file, search_content, search_files, write_file,
 )
-from orca_code.tools_web import (
-    web_fetch, read_webpage, get_weather, get_location, web_search,
+from orca_code.tools_dev import (  # Dev tools: git, code nav, vision (8 tools)
+    analyze_image, capture_camera, find_references,
+    git_blame, git_diff, git_log, git_status, go_to_definition,
 )
-from orca_code.tools_dev import (
-    git_status, git_diff, git_log, git_blame,
-    go_to_definition, find_references, analyze_image, capture_camera,
+from orca_code.tools_office import (  # Office tools: Excel, Word, OCR (6 tools)
+    ocr_image, read_excel, read_word,
+    take_screenshot, write_excel, write_word,
 )
-from orca_code.tools_automation import (
-    gui_click, gui_type, gui_move, gui_hotkey, gui_press,
-    window_focus, find_on_screen,
-    browser_open, browser_click, browser_type, browser_screenshot, browser_close,
+from orca_code.tools_skills import (  # Skills & task scheduler (8 tools)
+    add_task, create_skill, edit_skill,
+    list_md_skills, list_skills, list_tasks,
+    load_md_skill, load_skill, remove_task,
 )
-from orca_code.tools_skills import (
-    load_skill, create_skill, edit_skill, list_skills,
-    load_md_skill, list_md_skills,
-    add_task, list_tasks, remove_task,
+from orca_code.tools_web import (  # Web/search/weather tools (5 tools)
+    get_location, get_weather, read_webpage, web_fetch, web_search,
 )
 from orca_code.tts_mcp import speak_text
-from orca_code.subagent import agent_open, agent_eval, agent_close
-from orca_code.lsp import lsp_diagnostics, lsp_references, lsp_definition
+
+# ─── Optional: Coordinator ─────────────────────────────────────────────────
+try:
+    from orca_code.orchestrator import (
+        coordinator_judge,
+        coordinator_parallel,
+        coordinator_pipeline,
+    )
+    HAS_COORDINATOR = True
+except ImportError:
+    HAS_COORDINATOR = False
+    def coordinator_parallel(tasks_json, tools=""): return "Coordinator not available"
+    def coordinator_pipeline(stages_json, tools=""): return "Coordinator not available"
+    def coordinator_judge(task, n_solutions=3, tools=""): return "Coordinator not available"
 
 # ─── Optional: Python REPL ───────────────────────────────────────────────────
 try:
@@ -60,18 +88,19 @@ except ImportError:
 # TOOLS — OpenAI-format tool definitions
 # ═══════════════════════════════════════════════════════════════════════════════
 
-TOOLS: List[Dict[str, Any]] = [
+TOOLS: list[dict[str, Any]] = [
     # ── Core tools ──
     {
         "type": "function",
         "function": {
             "name": "execute_command",
-            "description": "Run a shell command and return output",
+            "description": "Run a shell command. Set use_session=true to run in a persistent shell that keeps env vars, cwd, and history across calls (like a real terminal). Use for multi-step workflows: cd + build + test. Default: one-shot execution.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "command": {"type": "string", "description": "要执行的命令"},
-                    "working_dir": {"type": "string", "description": "工作目录，默认为当前目录"}
+                    "working_dir": {"type": "string", "description": "工作目录，默认为当前目录"},
+                    "use_session": {"type": "boolean", "description": "在持久化 shell 会话中运行（保持环境变量和目录状态）。适合多步操作如 cd && build && test。默认: false"}
                 },
                 "required": ["command"]
             }
@@ -110,13 +139,14 @@ TOOLS: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Precise string replacement in a file. Provide old_string (must be unique in file) and new_string. Like find-and-replace for one occurrence. Use for small targeted changes instead of rewriting the whole file.",
+            "description": "Precise string replacement in a file. Provide old_string (must be unique) and new_string. Optional hashline for stale-anchor detection: format 'L<num>:<hash>' to verify line hasn't changed since read. Use hashline when you've read the file and want to prevent conflicts with external changes.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "File path"},
                     "old_string": {"type": "string", "description": "The exact text to replace (must be unique in file)"},
-                    "new_string": {"type": "string", "description": "The replacement text"}
+                    "new_string": {"type": "string", "description": "The replacement text"},
+                    "hashline": {"type": "string", "description": "Comma-separated anchors like 'L42:a1b2c3'. Each line hash verified before edit — refuses edit if file changed (stale anchor detection)."}
                 },
                 "required": ["path", "old_string", "new_string"]
             }
@@ -787,6 +817,53 @@ TOOLS: List[Dict[str, Any]] = [
             }
         }
     },
+    # ── Coordinator (multi-agent orchestration) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "coordinator_parallel",
+            "description": "Run multiple tasks in parallel across sub-agents. Provide a JSON array of task strings. Use for research that can be done concurrently — e.g. analyzing multiple files, searching different directories simultaneously. Max 5 tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tasks_json": {"type": "string", "description": "JSON array of task descriptions, e.g. '[\"analyze utils.py for bugs\", \"review main.py for performance\"]'"},
+                    "tools": {"type": "string", "description": "Comma-separated tool names for workers. Default: read_file,search_content,list_files."}
+                },
+                "required": ["tasks_json"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "coordinator_pipeline",
+            "description": "Run tasks sequentially in a pipeline. Each stage receives the context from prior stages. Use for multi-step workflows: code analysis → refactoring → validation. Each stage sees prior results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "stages_json": {"type": "string", "description": "JSON array of stage descriptions in order. Stage 2 sees Stage 1 output, etc."},
+                    "tools": {"type": "string", "description": "Comma-separated tool names shared across stages."}
+                },
+                "required": ["stages_json"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "coordinator_judge",
+            "description": "Generate N independent solutions to a task then judge which is best. Use for high-stakes decisions where multiple perspectives help: architecture designs, complex bug fixes, security reviews. Returns judge's verdict and solution summaries.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "The task needing multiple solutions"},
+                    "n_solutions": {"type": "integer", "description": "Number of independent solutions (1-5, default 3). Higher = more thorough but slower."},
+                    "tools": {"type": "string", "description": "Comma-separated tool names for solution workers."}
+                },
+                "required": ["task"]
+            }
+        }
+    },
 ]
 
 
@@ -794,7 +871,7 @@ TOOLS: List[Dict[str, Any]] = [
 # TOOL_MAP — name → callable mapping
 # ═══════════════════════════════════════════════════════════════════════════════
 
-TOOL_MAP: Dict[str, Any] = {
+TOOL_MAP: dict[str, Any] = {
     # Core
     "execute_command": execute_command, "read_file": read_file,
     "write_file": write_file, "edit_file": edit_file, "apply_diff": apply_diff,
@@ -836,6 +913,10 @@ TOOL_MAP: Dict[str, Any] = {
     "execute_python": execute_python,
     # Sub-agents
     "agent_open": agent_open, "agent_eval": agent_eval, "agent_close": agent_close,
+    # Coordinator (multi-agent orchestration)
+    "coordinator_parallel": coordinator_parallel,
+    "coordinator_pipeline": coordinator_pipeline,
+    "coordinator_judge": coordinator_judge,
     # LSP
     "lsp_diagnostics": lsp_diagnostics,
     "lsp_references": lsp_references,
@@ -845,7 +926,7 @@ TOOL_MAP: Dict[str, Any] = {
 # ── Lazy resolution markers (resolved on first call by run_tool) ─────────────
 # These functions live in main.py which imports from tool_registry — avoid
 # circular import by deferring resolution to call time.
-_LAZY_TOOLS: Dict[str, tuple] = {
+_LAZY_TOOLS: dict[str, tuple] = {
     "recall_conversation": ("orca_code.main", "recall_conversation"),
     "update_profile": ("orca_code.main", "update_profile"),
 }
@@ -862,20 +943,86 @@ def _resolve(name: str):
 
 
 def run_tool(name: str, args: dict) -> str:
-    """Permission-checked tool dispatch. All tool calls flow through here."""
+    """Permission-checked tool dispatch. All tool calls flow through here.
+
+    Supports caching for expensive tools (web_search, read_webpage, etc.)
+    and large-output storage via ContentStore.
+    """
     func = _resolve(name)
     if func is None:
+        # Check MCP tools
+        mcp_result = _try_mcp_tool(name, args)
+        if mcp_result is not None:
+            return mcp_result
         return f"Error: unknown tool - {name}"
 
-    # Permission check (Claude Code style)
-    from orca_code.permissions import resolve_permission
+    # Permission check (Claude Code style) — with WS delegation (P0)
     from orca_code.config import PERMISSION_MODE, PERMISSION_RULES
+    from orca_code.permissions import resolve_permission, check_permission, PermissionDecision, get_risk
     if not resolve_permission(name, args, PERMISSION_MODE, PERMISSION_RULES):
         return f"Permission denied for '{name}'. Use /permissions to manage rules."
 
     sig = inspect.signature(func)
     valid = {k: v for k, v in args.items() if k in sig.parameters}
-    result = func(**valid)
+
+    # ── P2-33: Validate arguments against schema ──────────────────────────
+    from orca_code.tool_validator import validate_with_suggestion
+    validation_error = validate_with_suggestion(name, valid)
+    if validation_error:
+        return validation_error
+
+    # ── P2-30: Run pre-tool hooks ────────────────────────────────────────
+    try:
+        from orca_code.hooks import get_hook_registry, HookContext
+        hook_registry = get_hook_registry()
+        ctx = HookContext(tool_name=name, args=valid)
+        allowed, modified_args = hook_registry.run_pre_hooks(ctx)
+        if not allowed:
+            return f"工具 '{name}' 被钩子拦截: {modified_args.get('error', '未知原因')}"
+        if modified_args != valid:
+            valid = modified_args
+    except ImportError:
+        pass  # Hooks module not available
+
+    # ── P2-32: File snapshot before modification ──────────────────────────
+    file_path = valid.get("path", "")
+    snapshot_path = None
+    if name in ("write_file", "edit_file", "apply_diff") and file_path:
+        try:
+            from orca_code.rollback import get_file_tracker
+            tracker = get_file_tracker()
+            snapshot_path = tracker.snapshot(file_path)
+        except ImportError:
+            pass
+
+    # Try cache for cacheable tools
+    from orca_code.tool_cache import CACHEABLE_TOOLS, cached_tool_call, get_content_store
+    if name in CACHEABLE_TOOLS:
+        result = cached_tool_call(name, func, **valid)
+    else:
+        result = func(**valid)
+
+    # ── P2-32: Record file change for rollback ────────────────────────────
+    if name in ("write_file", "edit_file", "apply_diff") and file_path:
+        try:
+            from orca_code.rollback import get_file_tracker
+            tracker = get_file_tracker()
+            tracker.record_change(file_path, name, snapshot_path)
+        except ImportError:
+            pass
+
+    # ── P2-30: Run post-tool hooks ───────────────────────────────────────
+    try:
+        from orca_code.hooks import get_hook_registry
+        hook_registry = get_hook_registry()
+        ctx2 = HookContext(tool_name=name, args=valid)
+        result = hook_registry.run_post_hooks(ctx2, str(result))
+    except ImportError:
+        pass
+
+    # Large output: truncate with note, don't store to file (causes agent loops)
+    if isinstance(result, str) and len(result) > 8000:
+        result = result[:8000] + f"\n\n[输出被截断: {len(result):,} 字符 → 8,000 字符]"
 
     # Constitution Article IV: verification markers
     from orca_code.constitution import verification_marker
@@ -883,9 +1030,28 @@ def run_tool(name: str, args: dict) -> str:
         is_error = result.startswith("Error") or result.startswith("错误") or result.startswith("Permission denied")
         if is_error:
             result += verification_marker(False, "")
-        elif name in ("write_file", "edit_file", "apply_diff"):
-            result += verification_marker(True, f"tool={name}")
-        elif name in ("execute_command", "execute_python"):
+        elif name in ("write_file", "edit_file", "apply_diff") or name in ("execute_command", "execute_python"):
             result += verification_marker(True, f"tool={name}")
 
     return result
+
+
+def _try_mcp_tool(name: str, args: dict) -> str | None:
+    """Try to dispatch a tool call to an MCP server.
+
+    MCP tools are named: mcp__<server_name>__<tool_name>
+    """
+    if not name.startswith("mcp__"):
+        return None
+    try:
+        from orca_code.mcp_client import get_mcp_registry
+        registry = get_mcp_registry()
+        # Parse: mcp__server__tool
+        parts = name.split("__", 2)
+        if len(parts) < 3:
+            return f"Error: invalid MCP tool name format: {name}"
+        server_name = parts[1]
+        tool_name = parts[2]
+        return registry.call_tool(server_name, tool_name, args)
+    except Exception as e:
+        return f"Error: MCP tool '{name}' failed: {e}"

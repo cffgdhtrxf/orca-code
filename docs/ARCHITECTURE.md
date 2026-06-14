@@ -1,6 +1,6 @@
 # Orca Code Architecture
 
-> v5.1.0 — Desktop AI assistant. 58 tools, multi-provider LLM support.
+> v5.2.0 — Desktop AI assistant. 58 tools, multi-provider LLM, TUI + CLI.
 
 ## Module Map
 
@@ -13,6 +13,7 @@ orca_code/
 ├── permissions.py              Three-tier permission system (READ/WRITE/EXEC)
 ├── security.py                 Layer 0 safety net + skill sandbox
 ├── tool_registry.py            Centralized TOOLS definitions + TOOL_MAP + dispatch
+├── server.py                   FastAPI HTTP/WS server (port 8498) — agent loop, streaming
 ├── main.py                     CLI loop, user input, command dispatch
 ├── session.py                  Session state + persistence + re-export hub
 ├── session_messages.py         Message sanitization, compression, token estimation
@@ -22,6 +23,9 @@ orca_code/
 ├── subagent.py                 Concurrent sub-agent execution
 ├── lsp.py                      LSP integration (diagnostics, references, definition)
 ├── utils.py                    Encoding, paths, token counting, cleanup
+├── bridge.py                   Class system ↔ legacy TOOL_MAP bidirectional sync
+├── daemon.py                   Background persistent assistant
+├── orchestrator.py             Multi-agent coordinator (parallel/pipeline/judge)
 ├── tools_core.py               Core tools (exec, read, write, edit, list, search)
 ├── tools_web.py                Web tools (fetch, search, weather, location)
 ├── tools_office.py             Office tools (Excel, Word, screenshot, OCR)
@@ -55,40 +59,63 @@ orca_code/
 │   └── local.py                Local model adapter (Ollama, etc.)
 └── tools/                      Placeholder for future class-based tools
     └── __init__.py
+
+orca-ts/  (TypeScript Ink+React TUI)
+├── src/
+│   ├── loader.mjs              ENTRY — NODE_ENV=production, Ink render
+│   ├── app.tsx                 Main App — FullscreenLayout (Claude Code pattern)
+│   ├── useChat.ts              WebSocket streaming hook
+│   ├── client.ts               HTTP/WS client (localhost:8498)
+│   └── components/             (future components)
+├── package.json                ink 5.2, react 18, ws
+└── tsconfig.json
 ```
 
 ## Data Flow
 
 ```
-User Input (get_user_input)
+TUI (orca-ts/)                 CLI (orca_code/)
+    │                               │
+    │  WebSocket @ :8498            │  in-process call
+    ▼                               ▼
+orca_code/server.py (FastAPI)
     │
     ▼
-main() loop
+call_model(messages) → OpenAI/DeepSeek API (streaming)
     │
-    ├─ /command ──────────► handle_config_cmd / handle_profile_cmd / show_help / ...
+    ▼
+process_stream(stream)
     │
-    └─ message ───────────► session.messages.append(user_msg)
-                                │
-                                ▼
-                           call_model(messages)
-                                │
-                                ▼
-                           OpenAI/DeepSeek API (streaming)
-                                │
-                                ▼
-                           process_stream(stream)
-                                │
-                                ├─ reasoning_content ► console (dim italic)
-                                ├─ content           ► console (Rich Markdown)
-                                └─ tool_calls        ► execute_tool_calls()
-                                                          │
-                                                          ▼
-                                                     run_tool(name, args)
-                                                          │
-                                                          ├─ resolve_permission()
-                                                          ├─ TOOL_MAP[name](**args)
-                                                          └─ verification_marker()
+    ├─ reasoning_content ► ws.send_json({"type":"reasoning_delta",...})
+    ├─ content           ► ws.send_json({"type":"text_delta",...})
+    └─ tool_calls        ► ws.send_json({"type":"tool_executing",...})
+                              │
+                              ▼
+                         execute_tool_calls()
+                              │
+                              ├─ resolve_permission()
+                              ├─ TOOL_MAP[name](**args)
+                              ├─ ws.send_json({"type":"tool_call",...})
+                              ├─ ws.send_json({"type":"tool_result",...})
+                              └─ loop: feed results back to model (max 10 turns)
+                                  │
+                                  ▼
+                              ws.send_json({"type":"done",...})
 ```
+
+### TUI Display Order (chronological)
+
+```
+你 › 用户输入
+💭 模型思考         ← reasoning_delta → message (before tools)
+⚡ tool_name        ← tool_call → message
+⚡ tool_name        ← tool_result → message
+● 最终回答          ← text_delta → message (after tools)
+```
+
+`flushFinalToMessages` in `useChat.ts` splits the assistant response into TWO messages:
+1. Reasoning → inserted after user msg, before tool msgs
+2. Answer → appended at end, after tool msgs
 
 ## Key Design Decisions
 
@@ -151,20 +178,13 @@ orca_native/
 ## Web Dashboard
 
 ```
-Flask at localhost:8499
-  /         HTML dashboard (auto-refresh 5s)
-  /stats    JSON session stats
-  /tools    JSON tool list
-  /health   JSON health check
-```
-
-## pip Install
-
-```bash
-pip install -e .                  # minimal
-pip install -e ".[gui,browser]"   # optional groups
-orca-code --version               # entry point
-orca-dashboard                    # dashboard
+FastAPI at localhost:8498
+  /dashboard      Web dashboard (auto-refresh)
+  /v1/health      JSON health check
+  /v1/tools       JSON tool list
+  /v1/sessions    Session CRUD
+  /v1/chat/stream WebSocket streaming chat
+  /docs           OpenAPI docs (Swagger)
 ```
 
 ## Key Metrics
@@ -174,6 +194,8 @@ orca-dashboard                    # dashboard
 | Tools | 58 (57 class-based + bridge) |
 | Tests | 99+ passed |
 | Providers | 4 (DeepSeek/OpenAI/Anthropic/Local) |
+| TUI framework | Ink 5.2 + React 18 |
+| Backend server | FastAPI (port 8498) |
 | Circular deps | 0 |
 | Wildcard imports | 0 |
 | Rust search | 0.011s |
@@ -191,4 +213,3 @@ tests/
 ├── test_metrics.py          Metrics collection
 ├── test_providers.py        Provider adapters
 └── test_tasks.py            Task scheduler
-```

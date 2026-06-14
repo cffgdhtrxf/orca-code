@@ -11,15 +11,16 @@ Usage:
     request = adapter.build_request(input)
 """
 
-from .base import ProviderAdapter, StreamRequestInput, ProviderRequest, StreamEvent
-from .registry import get_adapter, register_adapter, list_providers
+from .base import ProviderAdapter, ProviderRequest, StreamEvent, StreamRequestInput
+from .registry import get_adapter, list_providers, register_adapter
+
 
 # Auto-register built-in adapters on first import
 def _init():
-    from .deepseek import DeepSeekAdapter
-    from .openai_compat import OpenAICompatAdapter
     from .anthropic_compat import AnthropicCompatAdapter
+    from .deepseek import DeepSeekAdapter
     from .local import LocalAdapter
+    from .openai_compat import OpenAICompatAdapter
     for adapter in [
         DeepSeekAdapter(),
         OpenAICompatAdapter(),

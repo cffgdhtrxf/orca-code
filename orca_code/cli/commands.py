@@ -8,7 +8,9 @@ with the user via console I/O.
 from __future__ import annotations
 
 import json
-from orca_code.config import CONFIG, CONFIG_JSON, _sensitive_keys, console, mask_key, _get_mem_mgr
+
+from orca_code.config import CONFIG, CONFIG_JSON, _get_mem_mgr, _sensitive_keys, console
+from orca_code.infrastructure.config_loader import mask_key
 
 
 def handle_config_cmd(user_input: str):
@@ -68,11 +70,11 @@ def handle_profile_cmd(user_input: str):
         console.print("[green]Profile cleared[/green]")
     elif action.startswith("set "):
         mgr.set_meta("user_profile", action[4:].strip()[:500])
-        console.print(f"[green]Profile set[/green]")
+        console.print("[green]Profile set[/green]")
     elif action.startswith("add "):
         new_profile = f"{current} {action[4:].strip()}".strip()[:500]
         mgr.set_meta("user_profile", new_profile)
-        console.print(f"[green]Profile appended[/green]")
+        console.print("[green]Profile appended[/green]")
     else:
         mgr.set_meta("user_profile", action[:500])
-        console.print(f"[green]Profile updated[/green]")
+        console.print("[green]Profile updated[/green]")

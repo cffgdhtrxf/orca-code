@@ -1,23 +1,21 @@
 """orca_code.tools_skills — Skill system + scheduler."""
 
-import os, json, re, threading, time
-import ast as _ast
-from pathlib import Path
-from typing import Optional, Dict
+import json
+import threading
+import time
 from datetime import datetime
-from orca_code.config import (CONFIG, SKILLS_DIR, LOGS_DIR, SCRIPT_DIR,
-    console)
-from orca_code.security import (_SKILL_BLACKLIST, _SKILL_DANGEROUS_ATTRS,
-    _SKILL_SAFE_BUILTINS, _scan_skill_ast, _safe_exec_skill)
+
+from orca_code.config import LOGS_DIR, SKILLS_DIR, console
+from orca_code.security import _safe_exec_skill
 from orca_code.tools_core import execute_command
 from orca_code.tools_web import web_search
 
 # Skill system globals
-_loaded_skills: Dict[str, str] = {}
-_md_skill_cache: Dict[str, Dict] = {}
+_loaded_skills: dict[str, str] = {}
+_md_skill_cache: dict[str, dict] = {}
 _autoload_skills_cache: set = set()
 
-def _parse_skill_md(filepath) -> Optional[Dict]:
+def _parse_skill_md(filepath) -> dict | None:
     """Parse SKILL.md file with YAML frontmatter. Returns {meta, body} or None."""
     try:
         text = filepath.read_text(encoding="utf-8")
@@ -161,10 +159,10 @@ def load_md_skill(name: str) -> str:
     if triggers:
         extra += f" [触发: {', '.join(triggers)}]"
     return f"已加载行为技能: {name}{extra}"
-_scheduler_tasks: Dict[str, Dict] = {}
+_scheduler_tasks: dict[str, dict] = {}
 _scheduler_lock = threading.Lock()
 _scheduler_shutdown = threading.Event()
-def _parse_cron(cron_str: str) -> Optional[Dict]:
+def _parse_cron(cron_str: str) -> dict | None:
     parts = cron_str.strip().split()
     if len(parts) != 5:
         return None
@@ -195,7 +193,7 @@ def _run_task(name: str, action: str, params: dict):
     except Exception as e:
         log_line += f" | 错误: {e}"
     try:
-        with open(LOGS_DIR / "scheduler.log", "a", encoding="utf-8") as f:
+        with open(LOGS_DIR / "scheduler.log", "a", encoding="utf-8", errors="replace") as f:
             f.write(log_line + "\n")
     except Exception:
         pass

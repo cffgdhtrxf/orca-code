@@ -1,9 +1,9 @@
 """Tests for infrastructure/metrics.py — MetricsCollector and tool timing."""
 
-import time
-import pytest
 from orca_code.infrastructure.metrics import (
-    MetricsCollector, get_metrics_collector, _percentile,
+    MetricsCollector,
+    _percentile,
+    get_metrics_collector,
 )
 
 
