@@ -38,6 +38,15 @@ temp/
 memory/memories.db
 memory/memories.db-shm
 memory/memories.db-wal
+memory/orca_memory.db
+memory/orca_memory.db-shm
+memory/orca_memory.db-wal
+memory/knowledge_graph.db
+memory/knowledge_graph.db-shm
+memory/knowledge_graph.db-wal
+knowledge_graph.db
+knowledge_graph.db-shm
+knowledge_graph.db-wal
 
 # Backup files
 *.bak
@@ -47,3 +56,9 @@ memory/memories.db-wal
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Rust build artifacts
+orca_native/target/
+
+# Ruff cache
+.ruff_cache/
