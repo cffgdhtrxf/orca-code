@@ -3,8 +3,9 @@
 Counts files, lines of code by language, git stats.
 """
 from __future__ import annotations
-from pathlib import Path
+
 from collections import defaultdict
+from pathlib import Path
 
 EXT_MAP = {".py":"Python",".ts":"TypeScript",".tsx":"TSX",".js":"JavaScript",".rs":"Rust",
            ".go":"Go",".java":"Java",".c":"C",".cpp":"C++",".toml":"TOML",".json":"JSON",

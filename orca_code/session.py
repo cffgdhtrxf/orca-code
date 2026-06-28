@@ -19,26 +19,18 @@ from datetime import datetime
 from orca_code.config import SAVE_DIR
 
 # ── Re-export from submodules (backward compat) ────────────────────────────
-from orca_code.session_messages import (
-    _get_tools, _get_tool_map,
-    sanitize_messages, _msg_tokens, _extract_text,
-    _llm_compress_blocks, smart_trim_messages,
-)
-
-from orca_code.session_prompt import (
-    build_system_prompt, _estimate_prefix_tokens,
-)
-
+from orca_code.session_messages import _msg_tokens, sanitize_messages, smart_trim_messages
+from orca_code.session_prompt import build_system_prompt
+from orca_code.session_stream import call_model, execute_tool_calls, process_stream
 from orca_code.session_ui import (
-    print_gap, print_soft_gap,
-    show_tool_call, show_tool_result, show_tool_done,
-    show_usage, show_welcome, show_help, show_stats, show_cache,
+    print_gap,
+    print_soft_gap,
+    show_cache,
+    show_help,
+    show_stats,
+    show_usage,
+    show_welcome,
 )
-
-from orca_code.session_stream import (
-    call_model, process_stream, execute_tool_calls,
-)
-
 from orca_code.utils import _sanitize_for_save
 
 # ═══════════════════════════════════════════════════════════════════════════════

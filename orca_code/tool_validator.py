@@ -13,8 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Any
-
 
 def validate_tool_args(tool_name: str, args: dict, schema: dict | None = None) -> list[str]:
     """Validate tool arguments against the tool's JSON schema.

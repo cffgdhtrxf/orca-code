@@ -13,10 +13,7 @@ Strategy:
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
-from orca_code.config import CONTEXT_MAX_TOKENS, KEEP_ROUNDS, MODEL
+from orca_code.config import CONTEXT_MAX_TOKENS, KEEP_ROUNDS
 from orca_code.session_messages import _msg_tokens
 
 

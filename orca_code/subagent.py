@@ -108,7 +108,13 @@ class SubAgent:
     def _run(self) -> SubAgentResult:
         """Internal: execute the sub-agent task synchronously."""
         try:
-            from orca_code.config import MAX_OUTPUT_TOKENS, MODEL, _estimate_tokens, client, WORKING_DIR
+            from orca_code.config import (
+                MAX_OUTPUT_TOKENS,
+                MODEL,
+                WORKING_DIR,
+                _estimate_tokens,
+                client,
+            )
             from orca_code.session import sanitize_messages, smart_trim_messages
             from orca_code.tool_registry import TOOL_MAP
             from orca_code.tool_registry import run_tool as _parent_run_tool
@@ -121,6 +127,7 @@ class SubAgent:
             import os as _os
             try:
                 from pathlib import Path as _Path
+
                 from orca_code.worktree import get_worktree_manager
                 source = _Path(self.worktree_source) if self.worktree_source else WORKING_DIR
                 mgr = get_worktree_manager()

@@ -4,8 +4,10 @@ Save/load aliases from ~/.orca/aliases.json.
 Aliases are command shortcuts: "ll" -> "list_files /home"
 """
 from __future__ import annotations
+
 import json
 from pathlib import Path
+
 
 def _path() -> Path:
     return Path.home() / ".orca" / "aliases.json"

@@ -4,8 +4,11 @@ Checks for newer versions on startup. Shows notification if update available.
 Uses GitHub releases API or a custom endpoint.
 """
 from __future__ import annotations
-import json, threading, time, urllib.request
-from pathlib import Path
+
+import json
+import threading
+import time
+import urllib.request
 
 CURRENT_VERSION = "5.3.0"
 CHECK_URL = "https://api.github.com/repos/user/orca-code/releases/latest"

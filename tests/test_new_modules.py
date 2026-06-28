@@ -9,7 +9,6 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tool Validator
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -142,7 +141,7 @@ class TestFileTracker:
 
 class TestCompaction:
     def test_no_compaction_needed(self):
-        from orca_code.session_compaction import compact_messages, estimate_total_tokens
+        from orca_code.session_compaction import compact_messages
         msgs = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Hello"},
@@ -250,7 +249,7 @@ class TestRateTracker:
 
 class TestHooks:
     def test_register_and_run(self):
-        from orca_code.hooks import HookRegistry, HookContext
+        from orca_code.hooks import HookContext, HookRegistry
         reg = HookRegistry()
 
         calls = []
@@ -266,7 +265,7 @@ class TestHooks:
         assert calls[0] == "test_tool"
 
     def test_wildcard_hook(self):
-        from orca_code.hooks import HookRegistry, HookContext
+        from orca_code.hooks import HookContext, HookRegistry
         reg = HookRegistry()
 
         count = []
@@ -280,7 +279,7 @@ class TestHooks:
         assert len(count) == 2
 
     def test_post_hook_transform(self):
-        from orca_code.hooks import HookRegistry, HookContext
+        from orca_code.hooks import HookContext, HookRegistry
         reg = HookRegistry()
 
         def upper(ctx, result):

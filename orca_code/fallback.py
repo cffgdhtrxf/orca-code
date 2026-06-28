@@ -16,9 +16,9 @@ import functools
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
-
+from typing import Any
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error classification
@@ -241,7 +241,7 @@ def with_circuit_breaker(tool_name: str, fn: Callable[..., str]) -> Callable[...
             result = fn(*args, **kwargs)
             cb.record_success(tool_name)
             return result
-        except Exception as e:
+        except Exception:
             cb.record_failure(tool_name)
             raise
 

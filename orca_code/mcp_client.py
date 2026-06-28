@@ -15,13 +15,11 @@ Spec: https://modelcontextprotocol.io/
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -169,7 +167,7 @@ class StdioMcpTransport:
             if not response_line:
                 raise McpError(-32000, "MCP server closed connection")
             return _parse_response(response_line.strip())
-        except (OSError, IOError) as e:
+        except OSError as e:
             raise McpError(-32000, f"Failed to read from MCP server: {e}")
 
     def is_running(self) -> bool:

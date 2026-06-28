@@ -37,4 +37,4 @@ Total: 57 class-based tools + bridge to legacy TOOL_MAP.
 from orca_code.tools.base import Tool, ToolRegistry
 from orca_code.tools.bridge import sync_from_legacy, sync_to_legacy, tool_registry
 
-__all__ = ["Tool", "ToolRegistry", "tool_registry", "sync_to_legacy", "sync_from_legacy"]
+__all__ = ["Tool", "ToolRegistry", "sync_from_legacy", "sync_to_legacy", "tool_registry"]

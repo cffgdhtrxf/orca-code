@@ -34,13 +34,14 @@ from orca_code.session_messages import (
     _msg_tokens,
 )
 from orca_code.session_ui import (
-    show_tool_call, show_tool_done, show_tool_result,
-    show_tool_progress, render_markdown_smart, render_diff,
-    render_error_block, flash_status,
+    flash_status,
+    show_tool_call,
+    show_tool_done,
+    show_tool_progress,
+    show_tool_result,
 )
 from orca_code.tool_registry import run_tool
 from orca_code.utils import _sanitize_ansi, _sanitize_surrogates, fix_truncated_json
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Streaming flow control constants (P2-23)
@@ -55,6 +56,7 @@ STREAM_CHUNK_MIN_CHARS = 4
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import hashlib as _hashlib
+
 _last_system_prompt_hash: str = ""
 _prompt_version: int = 0
 

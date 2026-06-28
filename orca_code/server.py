@@ -29,19 +29,17 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from orca_code.config import (
-    BASE_URL,
-    MAX_OUTPUT_TOKENS,
-    MODEL,
-)
-from orca_code.session import build_system_prompt
-from orca_code.session_stream import call_model, execute_tool_calls, process_stream
-from orca_code.tool_registry import TOOLS
-
 # Permission mode: read from config (not hardcoded YOLO).
 # Per-session override supported via ChatRequest.mode or WS session_id lookup.
 import orca_code.config as _cfg
+from orca_code.config import (
+    BASE_URL,
+    MODEL,
+)
 from orca_code.permissions import PermissionMode
+from orca_code.session import build_system_prompt
+from orca_code.session_stream import call_model, execute_tool_calls, process_stream
+from orca_code.tool_registry import TOOLS
 
 app = FastAPI(title="Orca Code API", version="5.3.0")
 
@@ -111,7 +109,8 @@ async def export_session_endpoint(req: ExportRequest):
     Returns:
         {"path": "/path/to/exported/file", "format": "markdown"}
     """
-    from orca_code.session import export_session, session as global_session
+    from orca_code.session import export_session
+    from orca_code.session import session as global_session
 
     sess = global_session
     if req.session_id and req.session_id in _sessions:
@@ -309,7 +308,6 @@ async def health():
 async def health_detailed():
     """Detailed health check with diagnostics (P2-35)."""
     import sys as _sys
-    import os as _os
     import threading as _threading
 
     # Memory usage
@@ -557,7 +555,7 @@ async def chat_stream(ws: WebSocket):
                             await ws.send_json({"type": "interrupted", "message": "Stream aborted by user"})
                     except Exception:
                         pass  # ignore non-JSON messages in this listener
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             except Exception:
                 pass  # listener exits on any fatal error
@@ -593,7 +591,6 @@ async def chat_stream(ws: WebSocket):
                 break
 
             # Yield to event loop between chunks to allow interrupts and other tasks
-            import orca_code.utils as _u
             _chunk_count = 0
 
             for chunk in stream:
@@ -1049,7 +1046,7 @@ async def backup_config():
         # Redact sensitive values in backup
         safe_config = dict(CONFIG)
         for key in ("api_key", "tavily_api_key", "vision_api_key"):
-            if key in safe_config and safe_config[key]:
+            if safe_config.get(key):
                 safe_config[key] = safe_config[key][:8] + "***REDACTED***"
         backup_path.write_text(
             json.dumps(safe_config, ensure_ascii=False, indent=2, default=str),
@@ -1076,7 +1073,7 @@ async def restore_config(backup_path: str):
                 detail=f"Backup config has {result.error_count} errors: {result.format_for_display()}",
             )
         # Merge into current config (don't overwrite sensitive fields)
-        from orca_code.config import CONFIG, CONFIG_JSON
+        from orca_code.config import CONFIG
         for k, v in data.items():
             if not k.endswith("_key") or not CONFIG.get(k):
                 CONFIG[k] = v
@@ -1122,8 +1119,8 @@ async def trigger_auto_save():
     saved = 0
     for sid, sess in _sessions.items():
         try:
-            from orca_code.session_persistence import JSONLSessionStore, save_session_metadata
             from orca_code.config import SAVE_DIR
+            from orca_code.session_persistence import JSONLSessionStore, save_session_metadata
             store = JSONLSessionStore(SAVE_DIR / f"{sid}.jsonl")
             store.append_messages(sess["messages"])
             # Save metadata
@@ -1200,8 +1197,8 @@ async def tool_dry_run(tool_name: str, args: dict = {}):
     Returns the tool name, parsed arguments, and expected impact level.
     Does NOT execute the tool.
     """
+    from orca_code.permissions import RiskLevel, get_risk
     from orca_code.tool_registry import TOOL_MAP
-    from orca_code.permissions import get_risk, RiskLevel
     if tool_name not in TOOL_MAP:
         raise HTTPException(404, f"Unknown tool: {tool_name}")
     risk = get_risk(tool_name)

@@ -6,7 +6,7 @@ Supports pipe syntax conceptually (the model does the chaining).
 Also provides chain_execute() for programmatic multi-step workflows.
 """
 from __future__ import annotations
-from typing import Any
+
 
 def chain_execute(steps: list[tuple[str, dict, str | None]]) -> list[dict]:
     """Execute a chain of tool calls where each step can reference prior output.
@@ -20,6 +20,7 @@ def chain_execute(steps: list[tuple[str, dict, str | None]]) -> list[dict]:
         List of {tool, args, result, duration_ms} for each step.
     """
     import time
+
     from orca_code.tool_registry import run_tool
     results = []
     prev_output = ""

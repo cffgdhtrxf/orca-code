@@ -33,31 +33,65 @@ from orca_code.subagent import agent_close, agent_eval, agent_open
 # These are the single source of truth for tool function implementations.
 # The orca_code/tools/ package wraps these in class-based Tool subclasses.
 from orca_code.tools_automation import (  # GUI + browser automation (7 tools)
-    browser_click, browser_close, browser_open,
-    browser_screenshot, browser_type,
+    browser_click,
+    browser_close,
+    browser_open,
+    browser_screenshot,
+    browser_type,
     find_on_screen,
-    gui_click, gui_hotkey, gui_move, gui_press, gui_type,
+    gui_click,
+    gui_hotkey,
+    gui_move,
+    gui_press,
+    gui_type,
     window_focus,
 )
 from orca_code.tools_core import (  # Core file & command tools (9 tools)
-    apply_diff, edit_file, execute_command, get_system_info,
-    list_files, read_file, search_content, search_files, write_file,
+    apply_diff,
+    edit_file,
+    execute_command,
+    get_system_info,
+    list_files,
+    read_file,
+    search_content,
+    search_files,
+    write_file,
 )
 from orca_code.tools_dev import (  # Dev tools: git, code nav, vision (8 tools)
-    analyze_image, capture_camera, find_references,
-    git_blame, git_diff, git_log, git_status, go_to_definition,
+    analyze_image,
+    capture_camera,
+    find_references,
+    git_blame,
+    git_diff,
+    git_log,
+    git_status,
+    go_to_definition,
 )
 from orca_code.tools_office import (  # Office tools: Excel, Word, OCR (6 tools)
-    ocr_image, read_excel, read_word,
-    take_screenshot, write_excel, write_word,
+    ocr_image,
+    read_excel,
+    read_word,
+    take_screenshot,
+    write_excel,
+    write_word,
 )
 from orca_code.tools_skills import (  # Skills & task scheduler (8 tools)
-    add_task, create_skill, edit_skill,
-    list_md_skills, list_skills, list_tasks,
-    load_md_skill, load_skill, remove_task,
+    add_task,
+    create_skill,
+    edit_skill,
+    list_md_skills,
+    list_skills,
+    list_tasks,
+    load_md_skill,
+    load_skill,
+    remove_task,
 )
 from orca_code.tools_web import (  # Web/search/weather tools (5 tools)
-    get_location, get_weather, read_webpage, web_fetch, web_search,
+    get_location,
+    get_weather,
+    read_webpage,
+    web_fetch,
+    web_search,
 )
 from orca_code.tts_mcp import speak_text
 
@@ -958,7 +992,9 @@ def run_tool(name: str, args: dict) -> str:
 
     # Permission check (Claude Code style) — with WS delegation (P0)
     from orca_code.config import PERMISSION_MODE, PERMISSION_RULES
-    from orca_code.permissions import resolve_permission, check_permission, PermissionDecision, get_risk
+    from orca_code.permissions import (
+        resolve_permission,
+    )
     if not resolve_permission(name, args, PERMISSION_MODE, PERMISSION_RULES):
         return f"Permission denied for '{name}'. Use /permissions to manage rules."
 
@@ -973,7 +1009,7 @@ def run_tool(name: str, args: dict) -> str:
 
     # ── P2-30: Run pre-tool hooks ────────────────────────────────────────
     try:
-        from orca_code.hooks import get_hook_registry, HookContext
+        from orca_code.hooks import HookContext, get_hook_registry
         hook_registry = get_hook_registry()
         ctx = HookContext(tool_name=name, args=valid)
         allowed, modified_args = hook_registry.run_pre_hooks(ctx)
@@ -996,7 +1032,7 @@ def run_tool(name: str, args: dict) -> str:
             pass
 
     # Try cache for cacheable tools
-    from orca_code.tool_cache import CACHEABLE_TOOLS, cached_tool_call, get_content_store
+    from orca_code.tool_cache import CACHEABLE_TOOLS, cached_tool_call
     if name in CACHEABLE_TOOLS:
         result = cached_tool_call(name, func, **valid)
     else:

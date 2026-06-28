@@ -1,25 +1,20 @@
 """orca_code.main — Tool registry, user input, main loop."""
 
-import glob as _glob
 import json
 import os
 import re
-import sys
 import time
 from datetime import datetime
-
-# prompt_toolkit — professional readline replacement (IPython-grade input)
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from prompt_toolkit.completion import Completer, Completion, PathCompleter
-from prompt_toolkit.styles import Style
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.keys import Keys
-from prompt_toolkit.formatted_text import FormattedText
 from pathlib import Path
 
 import openai
+
+# prompt_toolkit — professional readline replacement (IPython-grade input)
+from prompt_toolkit import PromptSession
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import Completer, Completion, PathCompleter
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
 
 from orca_code.cli.commands import handle_config_cmd, handle_profile_cmd
 from orca_code.config import (
@@ -64,7 +59,7 @@ from orca_code.session import (
     show_welcome,
     smart_trim_messages,
 )
-from orca_code.tool_registry import TOOL_MAP
+from orca_code.tool_registry import TOOL_MAP, run_tool
 
 # Tool functions are dispatched via TOOL_MAP from tool_registry.
 # Only private/internal names imported directly:
@@ -150,8 +145,8 @@ def recall_conversation(query: str, limit: int = 5) -> str:
         return f"Error searching memory: {e}"
 
 
-# TOOLS, TOOL_MAP, run_tool are imported from orca_code.tool_registry
-# TOOLS, TOOL_MAP, run_tool are imported from orca_code.tool_registry
+# TOOLS, TOOL_MAP, run_tool are imported from orca_code.tool_registry -- see above
+# TOOLS, TOOL_MAP, run_tool are imported from orca_code.tool_registry -- see above
 
 # ─── Input history & completion ────────────────────────────────────────────
 _INPUT_HISTORY: list[str] = []
@@ -211,7 +206,6 @@ class OrcaCompleter(Completer):
 
 def _fuzzy_match_files(query: str, max_results: int = 12) -> list[str]:
     """Fuzzy match files in current directory for @ mentions."""
-    import fnmatch
     results = []
     try:
         for entry in os.scandir(os.getcwd()):

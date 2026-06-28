@@ -7,14 +7,17 @@ Config: {"api_keys": ["sk-key1", "sk-key2"], "api_key": "sk-default"}
 If api_keys is provided, rotation is enabled. Falls back to api_key.
 """
 from __future__ import annotations
-import threading, time
+
+import threading
+import time
+
 
 class KeyRotator:
     def __init__(self, keys: list[str]):
         self._keys = keys
         self._idx = 0
         self._cooldowns: dict[int, float] = {}
-        self._usage: dict[str, int] = {k:0 for k in keys}
+        self._usage: dict[str, int] = dict.fromkeys(keys, 0)
         self._lock = threading.Lock()
     def next(self) -> str | None:
         with self._lock:

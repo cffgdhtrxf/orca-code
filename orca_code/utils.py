@@ -142,7 +142,7 @@ def fix_truncated_json(json_str: str):
             continue
         if ch in '{[':
             stack.append(ch)
-        elif ch == '}' and stack and stack[-1] == '{' or ch == ']' and stack and stack[-1] == '[':
+        elif (ch == '}' and stack and stack[-1] == '{') or (ch == ']' and stack and stack[-1] == '['):
             stack.pop()
     if in_string:
         fixed += '"'

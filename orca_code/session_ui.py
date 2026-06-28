@@ -9,6 +9,9 @@ import json
 import os
 import sys
 
+# ─── Flash status messages (auto-dismiss after 2.5s, like DeepCode) ─────
+import threading as _threading
+
 from rich.markdown import Markdown
 from rich.table import Table
 
@@ -30,11 +33,6 @@ from orca_code.infrastructure.config_loader import mask_key
 from orca_code.session_messages import _get_tools
 from orca_code.session_prompt import _estimate_prefix_tokens
 from orca_code.utils import _strip_html
-
-
-# ─── Flash status messages (auto-dismiss after 2.5s, like DeepCode) ─────
-
-import threading as _threading
 
 _flash_msg: str | None = None
 _flash_style: str = "dim"
@@ -324,10 +322,10 @@ def show_cache():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import re
+
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
-from rich.columns import Columns
 
 # Regex for fenced code blocks: ```lang\n code \n```
 _CODE_BLOCK_RE = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)

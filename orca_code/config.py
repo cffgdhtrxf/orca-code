@@ -175,8 +175,8 @@ _sensitive_keys = {"api_key", "memory_api_key", "tavily_api_key"}
 def _get_client():
     global _client
     if _client is None:
-        from openai import OpenAI
         import httpx as _httpx
+        from openai import OpenAI
         # ── P2-56: Proxy support ─────────────────────────────────────────
         _proxy = CONFIG.get("proxy") or CONFIG.get("http_proxy") or ""
         _http_client = None

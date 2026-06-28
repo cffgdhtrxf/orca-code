@@ -8,8 +8,12 @@ Config: {"session_encryption": true, "encryption_password": "optional"}
 If no password, auto-generates a key stored in ~/.orca/.session_key
 """
 from __future__ import annotations
-import base64, hashlib, os, json
+
+import base64
+import hashlib
+import os
 from pathlib import Path
+
 
 def _get_key(password: str | None = None) -> bytes:
     if password:

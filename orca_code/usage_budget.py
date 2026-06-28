@@ -4,9 +4,13 @@ Track token/cost usage against daily/weekly budgets. Warn when approaching limit
 Config: {"budget": {"daily_tokens": 100000, "daily_cost": 1.00, "warn_at": 0.8}}
 """
 from __future__ import annotations
-import json, threading, time
+
+import json
+import threading
 from pathlib import Path
+
 from orca_code.cost_estimator import estimate_cost
+
 
 class UsageBudget:
     def __init__(self, config: dict | None = None):

@@ -34,9 +34,9 @@ import json
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 

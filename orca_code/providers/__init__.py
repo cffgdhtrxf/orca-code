@@ -38,10 +38,10 @@ _init()
 
 __all__ = [
     "ProviderAdapter",
-    "StreamRequestInput",
     "ProviderRequest",
     "StreamEvent",
+    "StreamRequestInput",
     "get_adapter",
-    "register_adapter",
     "list_providers",
+    "register_adapter",
 ]

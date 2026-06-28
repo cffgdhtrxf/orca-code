@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,11 +37,11 @@ class StructuredLogger:
         self._date_cache: str = ""
 
     def _get_path(self, category: str) -> Path:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         return self._dir / f"{category}_{today}.jsonl"
 
     def _write(self, category: str, record: dict):
-        record["_ts"] = datetime.now(timezone.utc).isoformat()
+        record["_ts"] = datetime.now(UTC).isoformat()
         line = json.dumps(record, ensure_ascii=False, default=str) + "\n"
         with self._lock:
             try:

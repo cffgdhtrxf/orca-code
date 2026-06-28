@@ -29,23 +29,22 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 import uuid
 from datetime import UTC, datetime
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Core imports (same as server.py)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-from orca_code.config import MODEL, BASE_URL, MAX_OUTPUT_TOKENS
-from orca_code.session import build_system_prompt
-from orca_code.session_stream import call_model, execute_tool_calls, process_stream
-from orca_code.tool_registry import TOOLS, TOOL_MAP
 
 # RPC mode: default to YOLO (no interactive permission prompt over stdin/stdout).
 # The TypeScript TUI will handle permissions when the PermissionCard UI is ready.
 import orca_code.config as _cfg
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Core imports (same as server.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+from orca_code.config import BASE_URL, MODEL
 from orca_code.permissions import PermissionMode
+from orca_code.session import build_system_prompt
+from orca_code.session_stream import call_model, execute_tool_calls
+from orca_code.tool_registry import TOOLS
+
 _cfg.PERMISSION_MODE = PermissionMode.YOLO
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -182,7 +181,7 @@ def handle_chat(req_id: int, params: dict):
 
         # Execute tools — send permission-relevant info for TUI display
         tool_names = [e["function_name"] for e in tool_calls_by_index.values()]
-        from orca_code.permissions import get_risk, RiskLevel
+        from orca_code.permissions import get_risk
         tool_risks = {name: get_risk(name).value for name in tool_names}
         _send_event(req_id, "tool_executing", count=len(tool_calls_by_index), tools=tool_names, risks=tool_risks)
 
@@ -213,7 +212,13 @@ def handle_tools_list(req_id: int, params: dict):
     _send_event(req_id, "tools_result", tools=tools, count=len(tools))
 
 def handle_config_get(req_id: int, params: dict):
-    from orca_code.config import ENABLE_THINK_MODE, ENABLE_GUI_AUTO, ENABLE_BROWSER_AUTO, PERMISSION_MODE, WORKING_DIR
+    from orca_code.config import (
+        ENABLE_BROWSER_AUTO,
+        ENABLE_GUI_AUTO,
+        ENABLE_THINK_MODE,
+        PERMISSION_MODE,
+        WORKING_DIR,
+    )
     _send_event(req_id, "config_result", model=MODEL, base_url=BASE_URL,
                 thinking_enabled=ENABLE_THINK_MODE, gui_enabled=ENABLE_GUI_AUTO,
                 browser_enabled=ENABLE_BROWSER_AUTO, permission_mode=str(PERMISSION_MODE),

@@ -6,8 +6,11 @@ are changed outside the agent, helping prevent stale context issues.
 Uses polling (os.stat mtime) with configurable interval.
 """
 from __future__ import annotations
-import threading, time, os
+
+import threading
+import time
 from pathlib import Path
+
 
 class FileWatcher:
     def __init__(self, root_dir: Path | None = None, interval: float = 2.0):
