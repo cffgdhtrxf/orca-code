@@ -59,6 +59,7 @@ tts = [
 dev = [
     "pytest>=8.0",
     "pytest-cov",
+    "pytest-timeout>=2.0",
 ]
 all = [
     "orca-code[gui,browser,office,speech,tts,dev]",
