@@ -337,6 +337,32 @@ def main():
             except Exception:
                 pass
 
+    # If no API key configured, prompt user to enter one before continuing
+    if client is None:
+        console.print("\n[yellow]⚠ 未检测到 API 密钥。首次使用请配置 API 密钥。[/yellow]")
+        console.print("[dim]可直接修改 config.json 中的 api_key 字段，或输入密钥：[/dim]")
+        try:
+            from prompt_toolkit import PromptSession
+            key = PromptSession().prompt("API Key > ")
+            if key and len(key) > 10:
+                CONFIG["api_key"] = key
+                import orca_code.config as _cfg
+                _cfg.CONFIG_JSON.write_text(
+                    json.dumps(CONFIG, indent=2, ensure_ascii=False), encoding="utf-8")
+                console.print("[green]密钥已保存到 config.json。正在初始化...[/green]")
+                # Reload client
+                _cfg._client = None
+                _client = _cfg._get_client()
+                if _client is None:
+                    console.print("[red]密钥无效，请检查后重试。[/red]")
+                    return
+            else:
+                console.print("[red]密钥无效，跳过。可稍后在 config.json 中配置。[/red]")
+                return
+        except ImportError:
+            console.print("[red]请手动编辑 config.json 填入 api_key 后重试。[/red]")
+            return
+
     mcp_registry = get_mcp_registry()
     mcp_configs = load_mcp_configs_with_fallback(CONFIG)
     for cfg in mcp_configs:
