@@ -43,7 +43,7 @@ echo   Virtual environment ready
 echo [3/5] Checking configuration...
 if not exist "config.json" (
     echo   config.json not found, creating default...
-    .venv\Scripts\python -c "import json; json.dump({'api_key':'','base_url':'https://api.deepseek.com','model_name':'deepseek-chat','local_model':False}, open('config.json','w',encoding='utf8'), indent=2, ensure_ascii=False)" 2>nul
+    .venv\Scripts\python -c "import json; json.dump({'api_key':'','base_url':'https://api.deepseek.com','model_name':'deepseek-v4-flash','local_model':False}, open('config.json','w',encoding='utf8'), indent=2, ensure_ascii=False)" 2>nul
     echo   Default config.json created. You will be prompted for API key on first run.
 )
 echo   Configuration ready

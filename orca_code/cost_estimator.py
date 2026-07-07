@@ -4,7 +4,7 @@ Estimates API token cost before execution based on expected token usage
 and model pricing. Helps users understand cost implications.
 
 Pricing per 1M tokens (approximate, USD):
-  deepseek-chat:      $0.14 input / $0.28 output
+  deepseek-v4-flash:  $0.15 input / $0.60 output
   deepseek-reasoner:  $0.55 input / $2.19 output
   gpt-4o:             $2.50 input / $10.00 output
   gpt-4o-mini:        $0.15 input / $0.60 output
@@ -14,6 +14,7 @@ Pricing per 1M tokens (approximate, USD):
 from __future__ import annotations
 
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    "deepseek-v4-flash": {"input": 0.15, "output": 0.60},
     "deepseek-chat": {"input": 0.14, "output": 0.28},
     "deepseek-reasoner": {"input": 0.55, "output": 2.19},
     "gpt-4o": {"input": 2.50, "output": 10.00},
