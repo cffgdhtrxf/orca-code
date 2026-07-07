@@ -8,7 +8,90 @@ echo   Orca Code Update Tool
 echo ======================================
 echo.
 
-:: Step 1: Check git
+if exist ".git" goto :git_update
+
+:: ── ZIP download mode (no git) ──
+echo [1/2] Checking PowerShell...
+powershell -Command "& {exit 0}" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: PowerShell required but not found.
+    pause
+    exit /b 1
+)
+echo   OK
+
+set TEMP_ZIP=%TEMP%\orca-update.zip
+set TEMP_DIR=%TEMP%\orca-update
+
+echo [2/2] Downloading latest version from GitHub...
+echo   URL: https://github.com/cffgdhtrxf/orca-code/archive/main.zip
+
+powershell -Command "
+& {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    try {
+        Write-Host '   Downloading...'
+        $wc = New-Object System.Net.WebClient
+        $wc.DownloadFile('https://github.com/cffgdhtrxf/orca-code/archive/main.zip', '%TEMP_ZIP%')
+        Write-Host '   Extracting...'
+        if (Test-Path '%TEMP_DIR%') { Remove-Item '%TEMP_DIR%' -Recurse -Force }
+        Expand-Archive '%TEMP_ZIP%' -DestinationPath '%TEMP_DIR%'
+        Write-Host '   SUCCESS'
+        exit 0
+    } catch {
+        Write-Host '   FAILED: ' + $_.Exception.Message
+        exit 1
+    }
+}"
+if %errorlevel% neq 0 (
+    echo.
+    echo ERROR: Download failed. Check your network connection.
+    echo Try downloading manually: https://github.com/cffgdhtrxf/orca-code/archive/main.zip
+    pause
+    exit /b 1
+)
+
+:: Find the extracted folder (GitHub adds '-main' suffix to the folder name)
+set SRC=%TEMP_DIR%\orca-code-main
+
+:: Check for version info
+if exist "%SRC%\VERSION" (
+    type "%SRC%\VERSION"
+)
+
+:: Copy: orca_code\ (core package), start.bat, config.example.json, pyproject.toml, etc.
+echo   Applying update...
+echo.
+xcopy /E /Y /Q "%SRC%\orca_code" "orca_code\" >nul 2>&1
+xcopy /E /Y /Q "%SRC%\skills" "skills\" >nul 2>&1
+xcopy /E /Y /Q "%SRC%\agents" "agents\" >nul 2>&1
+xcopy /E /Y /Q "%SRC%\docs" "docs\" >nul 2>&1
+copy /Y "%SRC%\orca_code.py" "orca_code.py" >nul 2>&1
+copy /Y "%SRC%\start.bat" "start.bat" >nul 2>&1
+copy /Y "%SRC%\start.sh" "start.sh" >nul 2>&1
+copy /Y "%SRC%\start_all.bat" "start_all.bat" >nul 2>&1
+copy /Y "%SRC%\start_local.bat" "start_local.bat" >nul 2>&1
+copy /Y "%SRC%\config.example.json" "config.example.json" >nul 2>&1
+copy /Y "%SRC%\pyproject.toml" "pyproject.toml" >nul 2>&1
+copy /Y "%SRC%\requirements.txt" "requirements.txt" >nul 2>&1
+copy /Y "%SRC%\AGENTS.md" "AGENTS.md" >nul 2>&1
+copy /Y "%SRC%\README.md" "README.md" >nul 2>&1
+copy /Y "%SRC%\update.bat" "update.bat" >nul 2>&1
+
+:: Clean up temp files
+del "%TEMP_ZIP%" >nul 2>&1
+rmdir /S /Q "%TEMP_DIR%" >nul 2>&1
+
+echo ======================================
+echo   Update complete
+echo ======================================
+echo.
+echo   Run start.bat to launch.
+echo.
+goto :end
+
+:: ── Git mode ──
+:git_update
 echo [1/3] Checking Git...
 where git >nul 2>&1
 if %errorlevel% neq 0 (
@@ -16,26 +99,9 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
-git --version 2>&1 | findstr /i "git" >nul
 echo   OK
 
-:: Step 2: Check git repo
-echo [2/3] Checking repository...
-if not exist ".git" (
-    echo.
-    echo   This looks like a ZIP download (no .git folder found).
-    echo   To enable updates, clone the repo instead:
-    echo     git clone https://github.com/cffgdhtrxf/orca-code.git
-    echo.
-    echo   Or download the latest ZIP from:
-    echo     https://github.com/cffgdhtrxf/orca-code/archive/main.zip
-    echo.
-    pause
-    exit /b 1
-)
-
-:: Fetch remote
-echo   Fetching updates...
+echo [2/3] Fetching updates...
 git fetch origin --quiet
 if %errorlevel% neq 0 (
     echo ERROR: Cannot connect to GitHub. Check your network/proxy.
@@ -44,9 +110,7 @@ if %errorlevel% neq 0 (
 )
 echo   OK
 
-:: Step 3: Compare and pull
 echo [3/3] Checking for updates...
-
 for /f %%v in ('git rev-parse HEAD') do set LOCAL=%%v
 for /f %%v in ('git rev-parse origin/main') do set REMOTE=%%v
 
@@ -67,30 +131,14 @@ echo   Changes:
 git log %LOCAL%..origin/main --oneline --no-decorate 2>nul
 echo.
 
-:: Stash local changes
 git stash --include-untracked --quiet 2>nul
-set STASHED=0
-git stash list 2>nul | findstr "." >nul && set STASHED=1
-
-:: Pull
-echo   Pulling updates...
 git pull origin main --ff-only --quiet 2>nul
 if %errorlevel% neq 0 (
-    echo   Fast-forward failed, trying hard reset...
+    echo   Fast-forward failed, using hard reset...
     git fetch origin --quiet
     git reset --hard origin/main --quiet
-    if %errorlevel% neq 0 (
-        echo ERROR: Update failed. Please check manually.
-        pause
-        exit /b 1
-    )
 )
-
-:: Restore stashed changes
-if %STASHED% equ 1 (
-    echo   Restoring local changes...
-    git stash pop --quiet 2>nul
-)
+git stash pop --quiet 2>nul
 
 echo.
 echo ======================================
@@ -98,6 +146,8 @@ echo   Update complete
 echo ======================================
 echo.
 echo   Updated to %REMOTE:~0,8%
+
+:end
 echo   Run start.bat to launch.
 echo.
 echo   If dependencies changed, reinstall:
