@@ -86,6 +86,7 @@ class LRUCache:
         self._max_size = max_size
         self._default_ttl = default_ttl_seconds
         self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+        self._tool_keys: dict[str, set[str]] = {}  # tool_name → set of cache keys
         self._lock = threading.Lock()
 
     def _make_key(self, *args, **kwargs) -> str:
@@ -112,13 +113,21 @@ class LRUCache:
         key = self._make_key(*args, **kwargs)
         ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
         expires_at = time.time() + ttl
+        tool_name = kwargs.pop("tool_name", None)
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
             self._cache[key] = (value, expires_at)
+            if tool_name:
+                self._tool_keys.setdefault(tool_name, set()).add(key)
             # Evict oldest if over capacity
             while len(self._cache) > self._max_size:
-                self._cache.popitem(last=False)
+                old_key, _ = self._cache.popitem(last=False)
+                # Also clean up tool_keys index
+                for tn, keys in list(self._tool_keys.items()):
+                    keys.discard(old_key)
+                    if not keys:
+                        del self._tool_keys[tn]
 
     def invalidate(self, *args, **kwargs):
         """Remove a specific cache entry."""
@@ -126,9 +135,18 @@ class LRUCache:
         with self._lock:
             self._cache.pop(key, None)
 
+    def invalidate_by_tool(self, tool_name: str):
+        """Remove all cached entries for a specific tool."""
+        with self._lock:
+            keys = self._tool_keys.pop(tool_name, set())
+            for key in keys:
+                self._cache.pop(key, None)
+
     def clear(self):
         """Clear all cached entries."""
         with self._lock:
+            self._cache.clear()
+            self._tool_keys.clear()
             self._cache.clear()
 
     @property
@@ -212,8 +230,8 @@ def invalidate_tool_cache(tool_name: str | None = None):
     cache = get_tool_cache()
     if tool_name is None:
         cache.clear()
-    # Partial invalidation by tool name not supported directly —
-    # the LRU naturally ages out entries. Use clear() for full reset.
+    else:
+        cache.invalidate_by_tool(tool_name)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

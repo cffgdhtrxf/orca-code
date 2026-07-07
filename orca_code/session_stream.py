@@ -6,6 +6,7 @@ Extracted from session.py.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,6 +17,7 @@ from rich.markdown import Markdown
 from rich.padding import Padding
 
 from orca_code.config import (
+    BASE_DIR,
     CONTEXT_MAX_TOKENS,
     ENABLE_THINK_MODE,
     IS_DEEPSEEK,
@@ -43,6 +45,11 @@ from orca_code.session_ui import (
 from orca_code.tool_registry import run_tool
 from orca_code.utils import _sanitize_ansi, _sanitize_surrogates, fix_truncated_json
 
+import hashlib as _hashlib
+
+# DeepSeek: persistent user_id for KV cache isolation (SHA of install dir)
+_DEEPSEEK_USER_ID: str = "u_" + _hashlib.sha256(str(BASE_DIR).encode()).hexdigest()[:12]
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Streaming flow control constants (P2-23)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -54,8 +61,6 @@ STREAM_CHUNK_MIN_CHARS = 4
 # ═══════════════════════════════════════════════════════════════════════════════
 # Prompt caching (P2-26) — reduce token usage by caching the system prompt
 # ═══════════════════════════════════════════════════════════════════════════════
-
-import hashlib as _hashlib
 
 _last_system_prompt_hash: str = ""
 _prompt_version: int = 0
@@ -88,6 +93,64 @@ def check_prompt_changed(messages: list[dict]) -> bool:
 def get_prompt_version() -> int:
     """Get the current prompt version (increments when prompt changes)."""
     return _prompt_version
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Terminal capability detection (F18 — ANSI style leak prevention on Windows)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _terminal_supports_italic() -> bool:
+    """Check if the terminal supports ANSI SGR codes for italic [3m and dim [2m.
+
+    Legacy Windows terminals (cmd.exe, old PowerShell 5.x) lack italic/dim
+    support. When they encounter unsupported SGR codes, their ANSI state
+    machine corrupts — the codes are silently ignored but the state tracker
+    doesn't account for them, so subsequent \\033[0m (SGR reset) loses sync.
+    This causes the "answer text polluted as gray/dim" bug.
+
+    Modern terminals that DO support italic/dim:
+      - Windows Terminal (WT_SESSION env var)
+      - VS Code integrated terminal
+      - ConEmu / Cmder
+      - All Unix terminals (xterm, gnome-terminal, iTerm2, kitty, etc.)
+    """
+    if sys.platform != "win32":
+        return True
+    # Windows Terminal sets WT_SESSION
+    if os.environ.get("WT_SESSION"):
+        return True
+    # VS Code / Cursor
+    term_program = os.environ.get("TERM_PROGRAM", "").lower()
+    if term_program in ("vscode", "cursor"):
+        return True
+    # ConEmu / Cmder
+    if os.environ.get("ConEmuPID") or "ConEmu" in os.environ.get("TERM_PROGRAM", ""):
+        return True
+    # WezTerm, Alacritty, Tabby — modern GPU-accelerated terminals
+    if term_program in ("wezterm", "alacritty", "tabby", "warp"):
+        return True
+    return False
+
+
+# Cached on first call
+_TERM_SUPPORTS_ITALIC: bool | None = None
+
+
+def _can_use_italic() -> bool:
+    """Return True if the terminal supports italic/dim ANSI codes (cached)."""
+    global _TERM_SUPPORTS_ITALIC
+    if _TERM_SUPPORTS_ITALIC is None:
+        _TERM_SUPPORTS_ITALIC = _terminal_supports_italic()
+    return _TERM_SUPPORTS_ITALIC
+
+
+def _write_ansi(text: str) -> None:
+    """Write raw ANSI text to stdout, handling Unicode errors gracefully."""
+    try:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+    except UnicodeEncodeError:
+        pass
 
 
 def call_model(messages):
@@ -134,7 +197,7 @@ def call_model(messages):
     # max_tokens: skip for Gemma/simple-mode models (let the server decide)
     if not USE_SIMPLE_PROMPT:
         kwargs["max_tokens"] = MAX_OUTPUT_TOKENS
-    # DeepSeek-specific: thinking + reasoning_effort
+    # DeepSeek-specific: thinking + reasoning_effort + user_id
     if IS_DEEPSEEK and not IS_LOCAL:
         if ENABLE_THINK_MODE:
             kwargs["reasoning_effort"] = REASONING_EFFORT
@@ -143,6 +206,11 @@ def call_model(messages):
             kwargs.pop("temperature", None)
         else:
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        # user_id for KV cache isolation and scheduling isolation (DeepSeek spec)
+        # Must go in extra_body, not as top-level kwarg — OpenAI SDK rejects unknown params
+        if "extra_body" not in kwargs:
+            kwargs["extra_body"] = {}
+        kwargs["extra_body"]["user_id"] = _DEEPSEEK_USER_ID
 
     # [A1] Tenacity retry with exponential backoff (3 attempts, 2s-10s)
     @tenacity.retry(
@@ -200,19 +268,22 @@ def process_stream(stream):
             safe_content = _sanitize_surrogates(delta.reasoning_content)
             if not thinking_started:
                 console.print()
-                # [F18] ANSI italic dim for thinking display
-                try:
-                    sys.stdout.write("\033[2;90;3m💭 ")
-                    sys.stdout.flush()
-                except UnicodeEncodeError:
-                    pass
+                # [F18] Terminal-aware thinking display.
+                # On legacy Windows terminals (cmd.exe, old PowerShell), ANSI
+                # SGR codes for italic [3m and dim [2m are NOT supported.
+                # Emitting unsupported codes corrupts the terminal's ANSI state
+                # machine, causing the subsequent reset [0m to lose sync and
+                # leak the thinking style into Rich's answer rendering.
+                # We detect terminal capabilities and emit only safe codes.
+                if _can_use_italic():
+                    # Full styling: dim + bright-black + italic
+                    _write_ansi("\033[2;90;3m💭 ")
+                else:
+                    # Safe fallback: bright-black only (no dim, no italic)
+                    _write_ansi("\033[90m💭 ")
                 thinking_started = True
             display = _sanitize_ansi(safe_content.replace("\n", "\n  "))
-            try:
-                sys.stdout.write(display)
-                sys.stdout.flush()
-            except UnicodeEncodeError:
-                pass
+            _write_ansi(display)
             reasoning_full += safe_content
 
         if delta.tool_calls:
@@ -233,8 +304,13 @@ def process_stream(stream):
         if delta.content:
             if t_answer_start is None:
                 t_answer_start = time.time()
+                # [F18] Reset ANSI style BEFORE Rich console operations.
+                # On legacy Windows terminals, unsupported ANSI codes (italic,
+                # dim) corrupt the ANSI state machine. We now emit only safe
+                # codes per _can_use_italic(), but the reset is still needed
+                # to clear any active styling before Rich takes over.
                 if thinking_started:
-                    console.print()
+                    _write_ansi("\033[0m\n")
                 answer_status = console.status(
                     "[dim]生成中... 0 字[/dim]",
                     spinner="dots", spinner_style="bright_black",
@@ -253,14 +329,10 @@ def process_stream(stream):
         from orca_code.session import session
         session.last_thinking = reasoning_full
 
-    # [F18] Reset ANSI after thinking
-    if thinking_started:
-        try:
-            sys.stdout.write("\033[0m\n")
-            sys.stdout.flush()
-        except UnicodeEncodeError:
-            pass
-
+    # [F18] Safety-net ANSI reset — fires when thinking was displayed but
+    # no answer content followed (e.g. tool-only responses).
+    if thinking_started and answer_status is None:
+        _write_ansi("\033[0m\n")
     if answer_status is not None:
         answer_status.stop()
 

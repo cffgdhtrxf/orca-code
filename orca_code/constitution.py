@@ -56,6 +56,16 @@ You are one intelligence in a chain. Leave the workspace better than you found i
 - Don't leave half-finished edits.
 - If you found confusing code, add a brief comment (only if truly helpful).
 - The next agent — human or AI — should understand what you did and why.
+
+### Article VI — ANTI-RATIONALIZATION (Tier 6)
+The following rationalizations are NEVER valid reasons to skip a lifecycle phase:
+- 'This task is too small for a skill' — every task goes through at least 1 phase.
+- 'I can just implement this quickly' — speed does not bypass process.
+- 'The user didn't ask for a spec' — the spec is for the agent, not the user.
+- 'I've done this before, I know what to do' — familiarity is not verification.
+When ANY lifecycle skill's trigger keywords match the user's message, invoke it.
+When in doubt, invoke. The cost of an unnecessary skill load is negligible.
+The cost of skipping verification is an undetected bug.
 """
 
 

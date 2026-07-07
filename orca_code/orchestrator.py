@@ -595,11 +595,11 @@ _coordinator_instance: Coordinator | None = None
 
 def _get_coordinator() -> Coordinator:
     """Get or create the global Coordinator instance."""
-    global _coordination_instance
-    if _coordination_instance is None:
+    global _coordinator_instance
+    if _coordinator_instance is None:
         from orca_code.config import MAX_WORKERS
-        _coordination_instance = Coordinator(max_workers=min(MAX_WORKERS, 5))
-    return _coordination_instance
+        _coordinator_instance = Coordinator(max_workers=min(MAX_WORKERS, 5))
+    return _coordinator_instance
 
 
 def coordinator_parallel(tasks_json: str, tools: str = "") -> str:

@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -16,11 +17,34 @@ from orca_code.config import (
     TERM_WIDTH,
     USER_CITY,
     console,
+    ensure_pkg,
     search_cache,
 )
 from orca_code.security import _TEST_LOCATION_HASH, is_safe_url
 
 """orca_code.tools_web — Web fetch, search, weather, location."""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tavily SDK client (lazy init)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_TAVILY_CLIENT = None
+_TAVILY_CLIENT_LOCK = threading.Lock()
+
+
+def _get_tavily_client():
+    global _TAVILY_CLIENT
+    if _TAVILY_CLIENT is not None:
+        return _TAVILY_CLIENT
+    if not TAVILY_API_KEY:
+        return None
+    with _TAVILY_CLIENT_LOCK:
+        if _TAVILY_CLIENT is not None:
+            return _TAVILY_CLIENT
+        ensure_pkg("tavily-python", "tavily")
+        from tavily import TavilyClient
+        _TAVILY_CLIENT = TavilyClient(api_key=TAVILY_API_KEY)
+    return _TAVILY_CLIENT
 
 
 def web_fetch(url: str) -> str:
@@ -90,35 +114,42 @@ def _score_results(results: list[dict], query: str) -> None:
                 break
         title = r.get("title", "").lower()
         r["score"] = r.get("score", 0) + len(qkw & set(title.split())) * 2
-def _search_with_tavily(query: str, max_results: int = 10, topic: str = "general", days: int = 0) -> list[dict]:
-    ck = f"tavily:{query}:{max_results}:{topic}:{days}"
+def _search_with_tavily(query: str, max_results: int = 10, topic: str = "general",
+                         days: int = 0, search_depth: str = "advanced",
+                         include_domains: list[str] | None = None,
+                         exclude_domains: list[str] | None = None) -> list[dict]:
+    ck = f"tavily:{query}:{max_results}:{topic}:{days}:{search_depth}"
     cached = search_cache.get(ck)
     if cached is not None:
         return cached
-    if not TAVILY_API_KEY:
+    client = _get_tavily_client()
+    if client is None:
         return [{"error": "未配置 tavily_api_key"}]
-    body = {
-        "api_key": TAVILY_API_KEY,
+    kwargs = {
         "query": query,
-        "search_depth": "advanced",
+        "search_depth": search_depth,
         "include_answer": True,
         "include_raw_content": True,
         "max_results": max_results,
         "topic": topic,
     }
     if days > 0:
-        body["days"] = days
+        kwargs["days"] = days
+    if include_domains:
+        kwargs["include_domains"] = include_domains
+    if exclude_domains:
+        kwargs["exclude_domains"] = exclude_domains
     try:
-        data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            "https://api.tavily.com/search", data=data,
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            r = json.loads(resp.read().decode("utf-8", errors="replace"))
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(client.search, **kwargs)
+            r = fut.result(timeout=12)
+    except concurrent.futures.TimeoutError:
+        return [{"error": "Tavily 请求超时(12s)"}]
     except Exception as e:
         return [{"error": str(e)}]
     results = []
+    answer = r.get("answer", "")
     for item in r.get("results", []):
         content = item.get("raw_content") or item.get("content", "")
         if content and len(content) > 2000:
@@ -139,8 +170,76 @@ def _search_with_tavily(query: str, max_results: int = 10, topic: str = "general
             seen.add(x["href"])
             unique.append(x)
     final = unique[:max_results]
+    if answer:
+        final.insert(0, {"title": "AI 摘要", "body": answer, "href": "", "score": 999, "source": "tavily"})
     search_cache[ck] = final
     return final
+
+
+def tavily_extract(urls: str | list[str], extract_depth: str = "basic") -> str:
+    """Extract clean content from one or more URLs via Tavily Extract API."""
+    client = _get_tavily_client()
+    if client is None:
+        return "错误: Tavily 未配置 (tavily_api_key)"
+    url_list = [urls] if isinstance(urls, str) else urls
+    try:
+        r = client.extract(urls=url_list, extract_depth=extract_depth)
+    except Exception as e:
+        return f"错误: Extract 失败 - {e}"
+    parts = []
+    for item in r.get("results", []):
+        raw = item.get("raw_content", "")
+        if raw:
+            cleaned = re.sub(r'\s+', ' ', raw).strip()
+            if len(cleaned) > 4000:
+                cleaned = cleaned[:4000] + "\n... (截断)"
+            parts.append(f"## {item.get('url', '')}\n\n{cleaned}")
+    failed = r.get("failed_results", [])
+    for f_item in failed:
+        parts.append(f"## {f_item.get('url', '')}\n错误: {f_item.get('error', '提取失败')}")
+    return "\n\n---\n\n".join(parts) if parts else "未能提取到内容"
+
+
+def tavily_crawl(url: str, instructions: str = "", max_depth: int = 2, max_pages: int = 10) -> str:
+    """Crawl a website and return extracted content via Tavily Crawl API."""
+    client = _get_tavily_client()
+    if client is None:
+        return "错误: Tavily 未配置 (tavily_api_key)"
+    try:
+        r = client.crawl(url=url, instructions=instructions, max_depth=max_depth, max_pages=max_pages)
+    except Exception as e:
+        return f"错误: Crawl 失败 - {e}"
+    parts = []
+    for item in r.get("results", []):
+        raw = item.get("raw_content", "")
+        if raw:
+            cleaned = re.sub(r'\s+', ' ', raw).strip()
+            if len(cleaned) > 3000:
+                cleaned = cleaned[:3000] + "\n... (截断)"
+            parts.append(f"### {item.get('url', '')}\n\n{cleaned}")
+    if not parts:
+        return f"Crawl 完成，但未提取到内容。共处理 {len(r.get('results', []))} 页。"
+    return f"已爬取 {len(parts)} 页:\n\n" + "\n\n---\n\n".join(parts)
+
+
+def tavily_map(url: str) -> str:
+    """Discover all URLs on a domain via Tavily Map API."""
+    client = _get_tavily_client()
+    if client is None:
+        return "错误: Tavily 未配置 (tavily_api_key)"
+    try:
+        r = client.map(url=url)
+    except Exception as e:
+        return f"错误: Map 失败 - {e}"
+    links = r.get("links", [])
+    if not links:
+        return "未发现任何子页面"
+    parts = [f"域名 {url} 发现 {len(links)} 个子页面:"]
+    for link in links[:100]:
+        parts.append(f"  - {link}")
+    if len(links) > 100:
+        parts.append(f"  ... 及 {len(links) - 100} 个更多")
+    return "\n".join(parts)
 def _ddg_fallback(query: str) -> str:
     url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
     req = urllib.request.Request(url, headers={
@@ -166,17 +265,37 @@ def _ddg_fallback(query: str) -> str:
         if len(results) >= 10:
             break
     return "\n\n".join(results) if results else f"未找到与 '{query}' 相关的结果"
-def web_search(query: str, days: int = 0, topic: str = "general") -> str:
+def web_search(query: str, days: int = 0, topic: str = "general",
+               max_results: int = 5, search_depth: str = "advanced",
+               include_domains: str = "", exclude_domains: str = "") -> str:
+    import time as _time
+    _deadline = _time.time() + 20  # total timeout: 20s across all providers
     queries = _optimize_search_query(query)
+    domain_include = [d.strip() for d in include_domains.split(",") if d.strip()] if include_domains else None
+    domain_exclude = [d.strip() for d in exclude_domains.split(",") if d.strip()] if exclude_domains else None
     for q in queries:
         if not TAVILY_API_KEY:
             break
-        tavily_results = _search_with_tavily(q, topic=topic, days=days)
+        if _time.time() > _deadline:
+            return "错误: 搜索超时（总时间超过 20s）"
+        tavily_results = _search_with_tavily(
+            q, max_results=max_results, topic=topic, days=days,
+            search_depth=search_depth,
+            include_domains=domain_include, exclude_domains=domain_exclude,
+        )
         if not (len(tavily_results) == 1 and "error" in tavily_results[0]):
-            lines = [f"{i + 1}. {r['title']}\n    {r['href']}\n    {r['body']}"
-                     for i, r in enumerate(tavily_results)]
+            lines = []
+            for i, r in enumerate(tavily_results):
+                line = f"{i + 1}. {r['title']}"
+                if r['href']:
+                    line += f"\n    {r['href']}"
+                if r['body']:
+                    line += f"\n    {r['body']}"
+                lines.append(line)
             return "\n\n".join(lines) if lines else f"未找到与 '{query}' 相关的结果"
         console.print(f"  [dim]Tavily 不可用: {tavily_results[0]['error']}，降级到 DDG[/dim]")
+    if _time.time() > _deadline:
+        return "错误: 搜索超时（总时间超过 20s）"
     return _ddg_fallback(query)
 def get_weather(location: str) -> str:
     try:

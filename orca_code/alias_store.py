@@ -15,8 +15,12 @@ def _path() -> Path:
 def load_aliases() -> dict[str, str]:
     p = _path()
     if p.exists():
-        try: return json.loads(p.read_text(encoding="utf-8"))
-        except: pass
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as _e:
+            import logging
+            logging.getLogger("orca_code.alias_store").warning(
+                "Failed to load aliases: %s", _e)
     return {}
 
 def save_aliases(aliases: dict[str, str]):

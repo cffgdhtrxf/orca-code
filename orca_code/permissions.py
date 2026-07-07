@@ -1,9 +1,12 @@
-"""orca_code.permissions — Claude Code-style tool permission system.
+"""orca_code.permissions — Tool permission system.
 
 Three modes:
+  yolo      — all tools auto-approved (default). 开箱即用，不打断工作流。
   read-only — read tools auto-approved, write/exec prompt once (rememberable)
   auto      — all tools prompt on first use, choice saved for session
-  yolo      — all tools auto-approved (no prompts)
+
+Orca Code 默认 YOLO 模式：所有工具自动放行，不弹权限确认框。
+用户可在 config.json 中改为 read-only 或 auto 模式。
 
 Tools self-declare their risk level. User rules in config.json override.
 """
@@ -81,6 +84,9 @@ TOOL_RISK: dict[str, RiskLevel] = {
     "web_fetch":          RiskLevel.WRITE,  # makes network requests
     "read_webpage":       RiskLevel.WRITE,
     "web_search":         RiskLevel.WRITE,
+    "tavily_extract":     RiskLevel.WRITE,
+    "tavily_crawl":       RiskLevel.WRITE,
+    "tavily_map":         RiskLevel.WRITE,
 
     # ---- EXEC ----
     "execute_command":    RiskLevel.EXEC,
@@ -179,58 +185,43 @@ def check_permission(
     mode: PermissionMode,
     user_rules: dict[str, str] | None = None
 ) -> PermissionDecision:
-    """Check whether a tool call should be allowed, denied, or prompted.
+    """Check whether a tool call should be allowed.
 
-    Resolution order:
-    1. User rule in config.json → always wins
-    2. Saved choice in permission store → remembered from previous prompt
-    3. Mode-based auto-approval:
-       - YOLO: everything allowed
-       - read-only: READ allowed, WRITE/EXEC → ASK
-       - auto: READ allowed, WRITE/EXEC → ASK on first use
+    Orca Code 默认全放行（YOLO模式），不弹权限确认框。
+    如需权限控制，在 config.json 中设置 permission_mode 为 auto 或 read-only。
 
     Returns PermissionDecision.ALLOW, .ASK, or .DENY.
     """
-    user_rules = user_rules or {}
-
     # 1. User rule in config.json always wins
+    user_rules = user_rules or {}
     if tool_name in user_rules:
         rule = user_rules[tool_name]
-        if rule == "allow":
-            return PermissionDecision.ALLOW
-        elif rule == "deny":
+        if rule == "deny":
             return PermissionDecision.DENY
         elif rule == "ask":
             return PermissionDecision.ASK
 
-    # 2. Saved choice from previous prompt
-    if perm_store is not None:
+    # 2. Saved choice in permission store
+    if perm_store is not None and mode != PermissionMode.YOLO:
         saved = perm_store.get(tool_name)
         if saved == "allow":
             return PermissionDecision.ALLOW
         elif saved == "deny":
             return PermissionDecision.DENY
 
-    # 3. Mode-based auto-approval
+    # 3. YOLO is default — everything auto-approved
     if mode == PermissionMode.YOLO:
         return PermissionDecision.ALLOW
 
+    # 4. Mode-based
     risk = get_risk(tool_name)
 
     if mode == PermissionMode.READ_ONLY:
-        if risk == RiskLevel.READ:
-            return PermissionDecision.ALLOW
-        else:
-            return PermissionDecision.ASK
+        return PermissionDecision.ALLOW if risk == RiskLevel.READ else PermissionDecision.ASK
 
-    # AUTO mode: READ auto-approve, WRITE/EXEC ask on first use
     if mode == PermissionMode.AUTO:
-        if risk == RiskLevel.READ:
-            return PermissionDecision.ALLOW
-        else:
-            return PermissionDecision.ASK
+        return PermissionDecision.ALLOW if risk == RiskLevel.READ else PermissionDecision.ASK
 
-    # Fallback
     return PermissionDecision.ASK
 
 

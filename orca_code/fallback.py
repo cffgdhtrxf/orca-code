@@ -56,6 +56,8 @@ def is_retryable_error(error: Exception) -> bool:
     # Fatal errors
     if "401" in error_str or "403" in error_str:
         return False  # Auth error
+    if "402" in error_str or "insufficient_balance" in error_str or "余额不足" in error_str:
+        return False  # Insufficient balance (DeepSeek 402)
     if "invalid_api_key" in error_str:
         return False
     if "content_filter" in error_str:
@@ -79,6 +81,8 @@ def classify_error(error: Exception) -> str:
         return "auth"
     if "content_filter" in error_str:
         return "content_filter"
+    if "402" in error_str or "balance" in error_str:
+        return "insufficient_balance"
     return "unknown"
 
 

@@ -97,6 +97,7 @@ REQUIRED_FIELDS: dict[str, dict] = {
         "type": str, "required": False,
         "description": "权限模式",
         "allowed": ["read-only", "auto", "yolo"],
+        "example": "yolo",
     },
     "max_workers": {
         "type": (int, float), "required": False,
@@ -139,6 +140,7 @@ OPTIONAL_FIELDS: dict[str, dict] = {
                          "allowed": ["low", "medium", "high", "max"]},
     "permission_rules": {"type": dict, "required": False, "description": "权限规则"},
     "mcp_servers": {"type": dict, "required": False, "description": "MCP 服务器配置"},
+    "compress_config": {"type": dict, "required": False, "description": "Headroom 压缩配置"},
 }
 
 
@@ -261,6 +263,20 @@ def validate_config(config: dict[str, Any], config_path: Path | None = None) -> 
             "API 密钥格式可能不标准",
             "大多数 API 密钥以 'sk-' 开头",
         ))
+
+    # compress_config sub-field validation
+    cc = config.get("compress_config")
+    if isinstance(cc, dict):
+        if "protect_recent" in cc:
+            pr = cc["protect_recent"]
+            if not isinstance(pr, int) or pr < 1 or pr > 20:
+                result.issues.append(ValidationIssue("warning", "compress_config.protect_recent",
+                    f"值 {pr} 超出范围 (1-20)", "设为 1-20 的整数"))
+        if "target_ratio" in cc and cc["target_ratio"] is not None:
+            tr = cc["target_ratio"]
+            if not isinstance(tr, (int, float)) or tr < 0.0 or tr > 1.0:
+                result.issues.append(ValidationIssue("warning", "compress_config.target_ratio",
+                    f"值 {tr} 超出范围 (0.0-1.0)", "设为 0.0-1.0 或 null"))
 
     # Info: working directory check
     wd = config.get("working_dir", "")

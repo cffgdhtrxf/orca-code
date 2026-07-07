@@ -28,6 +28,24 @@ models/
 sherpa_onnx_models/
 vosk_models/
 
+# Session & planning artifacts
+.omo/
+.deveco/
+
+# Memory databases
+memory/*.db
+memory/*.db-shm
+memory/*.db-wal
+
+# Build artifacts
+target/
+orca_native/target/
+*.pyd
+*.so
+
+# Package lock
+uv.lock
+
 # User data & logs
 save/
 logs/

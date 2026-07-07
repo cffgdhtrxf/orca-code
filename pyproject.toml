@@ -47,6 +47,9 @@ office = [
     "openpyxl",
     "python-docx",
 ]
+compression = [
+    "headroom-ai[all]>=0.30.0",
+]
 speech = [
     "vosk",
     "sounddevice",
@@ -62,7 +65,7 @@ dev = [
     "pytest-timeout>=2.0",
 ]
 all = [
-    "orca-code[gui,browser,office,speech,tts,dev]",
+    "orca-code[gui,browser,office,speech,tts,dev,compression]",
 ]
 
 [project.urls]
@@ -218,4 +221,4 @@ skip_covered = false
 
 # Minimum coverage thresholds (to be raised over time)
 [tool.coverage.report.fail_under]
-total = 70  # target: 80%+ by Month 2
+total = 85  # enterprise target

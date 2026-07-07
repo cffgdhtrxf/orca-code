@@ -48,10 +48,9 @@ _FORBIDDEN_SUFFIXES = set()
 _FORBIDDEN_DIRS_INTERNAL = set()
 def _validate_write_path(path: str) -> tuple:
     p = resolve_tool_path(path).resolve()
-    try:
-        p.relative_to(SCRIPT_DIR.resolve())
-    except ValueError:
-        return p, f"错误: 禁止写入沙箱外路径 - {path}"
+    # Allow writing anywhere EXCEPT system-protected directories.
+    # The old sandbox restricted to SCRIPT_DIR, which blocked legitimate
+    # use cases like saving reports to the user's Desktop.
     if any(part.lower() in _FORBIDDEN_DIRS for part in p.parts):
         return p, f"错误: 禁止写入敏感目录 - {path}"
     # Block writing to config files and source code

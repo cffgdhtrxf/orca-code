@@ -30,8 +30,10 @@ def get_workspace_stats(root: Path | None = None) -> dict:
                     lc = len(f.read_text(encoding="utf-8",errors="replace").splitlines())
                     lines_by_lang[lang] += lc
                     total_lines += lc
-                except: pass
-    except: pass
+                except (OSError, UnicodeError):
+                    pass
+    except (OSError, PermissionError):
+        pass
     return {"total_files": total_files, "total_lines": total_lines,
             "files_by_language": dict(files_by_lang), "lines_by_language": dict(lines_by_lang)}
 

@@ -35,6 +35,7 @@ _LAZY_MODULES: dict[str, str] = {
     "utils":            "orca_code.utils",
     "security":         "orca_code.security",
     "tools_core":       "orca_code.tools_core",
+    "tools_memory":     "orca_code.tools_memory",
     "tools_office":     "orca_code.tools_office",
     "tools_web":        "orca_code.tools_web",
     "tools_dev":        "orca_code.tools_dev",

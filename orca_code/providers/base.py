@@ -70,7 +70,8 @@ class StreamRequestInput:
     max_output_tokens: int = 8192
     temperature: float = 0.7
     thinking_enabled: bool = False
-    reasoning_effort: str = "high"          # "low" | "medium" | "high" (DeepSeek)
+    reasoning_effort: str = "max"           # "high" | "max" (DeepSeek; low/medium→high, xhigh→max)
+    user_id: str = ""                       # For KV cache isolation (DeepSeek spec)
     extra_body: dict[str, Any] | None = None  # Provider-specific overrides
 
 

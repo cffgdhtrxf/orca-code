@@ -134,12 +134,15 @@ def show_usage(usage):
         return
     inp = getattr(usage, "prompt_tokens", 0) or 0
     out = getattr(usage, "completion_tokens", 0) or 0
-    # [E15] Get server-reported cache and reasoning tokens
     turn_cached = 0
     turn_reasoning = 0
+    # DeepSeek: direct prompt_cache_hit_tokens on usage object
+    turn_cached = getattr(usage, 'prompt_cache_hit_tokens', 0) or 0
+    # Legacy: prompt_tokens_details.cached_tokens (OpenAI format)
     pd = getattr(usage, 'prompt_tokens_details', None)
     if pd and hasattr(pd, 'cached_tokens'):
-        turn_cached = pd.cached_tokens or 0
+        turn_cached += (pd.cached_tokens or 0)
+    # Reasoning tokens
     cd = getattr(usage, 'completion_tokens_details', None)
     if cd and hasattr(cd, 'reasoning_tokens'):
         turn_reasoning = cd.reasoning_tokens or 0
@@ -263,6 +266,12 @@ def show_welcome():
     if ENABLE_THINK_MODE:
         console.print("[dim]💭 思考中可按 Ctrl+C 跳过，直接获取回答[/dim]")
     console.print()
+
+def _get_tool_map() -> dict:
+    from orca_code.tool_registry import TOOL_MAP
+    return TOOL_MAP
+
+
 def show_help():
     console.print()
     console.print("[bold]内置命令[/bold]")
@@ -278,6 +287,15 @@ def show_help():
     console.print("  /profile  查看/修改用户画像")
     console.print("  /config   查看/修改配置")
     console.print("  /permissions 查看/管理工具权限")
+    console.print()
+    console.print("[bold]生命周期工作流命令[/bold]")
+    from orca_code.slash_commands import COMMAND_HELP
+    lifecycle_cmds = {k: v for k, v in COMMAND_HELP.items() if k.startswith("/") and k not in
+                      ("/help", "/clear", "/stats", "/save", "/cache", "/think",
+                       "/skills", "/tasks", "/memories", "/profile", "/config",
+                       "/permissions", "/search", "/tts", "/voice")}
+    for cmd, desc in sorted(lifecycle_cmds.items()):
+        console.print(f"  {cmd:<16} {desc}")
     console.print("  exit     退出程序")
     console.print()
     console.print("[bold]可用工具[/bold]")

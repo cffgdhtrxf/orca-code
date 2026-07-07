@@ -96,7 +96,7 @@ TTSMCP_NAMES = {'BertVits2TTS','bert_vits2_engine','_sapi_speaker_cache',
     '_sapi_chinese_voice','_sapi_english_voice','_tts_queue','_tts_processing',
     '_tts_lock','_tts_condition','_detect_tts_lang','_get_sapi_speaker',
     '_tts_worker','_tts_worker_thread','speak_text','voice_input',
-    '_load_mcp_config','mcp_call_tool','_enumerate_mcp_tools','init_mcp_tools'}
+}
 
 SESSION_NAMES = {'Session','session','build_system_prompt','_estimate_prefix_tokens',
     '_CACHED_PREFIX_TOKENS','print_gap','print_soft_gap','show_tool_call',

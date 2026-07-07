@@ -192,13 +192,10 @@ class SubAgent:
                             fn_args = {}
 
                         func = _parent_run_tool if fn_name not in TOOL_MAP else TOOL_MAP[fn_name]
-                        if func is _parent_run_tool:
-                            result = f"Tool '{fn_name}' not available to sub-agent"
-                        else:
-                            try:
-                                result = func(**fn_args)
-                            except Exception as e:
-                                result = f"Tool error: {e}"
+                        try:
+                            result = func(**fn_args)
+                        except Exception as e:
+                            result = f"Tool error: {e}"
 
                         tool_calls_count += 1
 

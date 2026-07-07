@@ -39,7 +39,8 @@ from orca_code.tools_web import *
 from orca_code.tools_dev import *
 from orca_code.tools_skills import *
 from orca_code.tools_automation import *
-from orca_code.tts_mcp import (speak_text, voice_input, init_mcp_tools,
+from orca_code.mcp_client import get_mcp_registry, load_mcp_configs_with_fallback
+from orca_code.tts_mcp import (speak_text, voice_input,
     init_speech_recognition)
 from orca_code.session import *
 from orca_code.utils import (_msg_tokens, _estimate_tokens,

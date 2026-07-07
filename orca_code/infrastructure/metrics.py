@@ -25,7 +25,7 @@ class MetricsCollector:
     """
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._pending: dict[str, float] = {}  # event_id → start_time
         self._timings: dict[str, list[float]] = defaultdict(list)  # tool_name → [elapsed_ms]
         self._errors: dict[str, int] = defaultdict(int)  # tool_name → error_count

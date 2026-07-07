@@ -1,4 +1,6 @@
 
+"""orca_code.tools_core — Core tools: execute, read, write, list, search."""
+
 import getpass
 import glob as glob_mod
 import logging
@@ -8,14 +10,14 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 from orca_code.config import CMD_TIMEOUT, CONFIG_JSON, PERMISSION_MODE, SILENT_CMD, WORKING_DIR
 from orca_code.security import check_command_safety, check_mode_command
 from orca_code.utils import _detect_encoding, _validate_write_path
-
-"""orca_code.tools_core — Core tools: execute, read, write, list, search."""
 
 
 def get_device_type() -> str:
@@ -91,7 +93,11 @@ def execute_command(command: str, working_dir: str = None, use_session: bool = F
 
     # Detect PowerShell syntax — shlex.split doesn't understand pipes, variables,
     # or cmdlet patterns. Pass as a single command string to powershell -Command.
-    _PS_SYNTAX = any(
+    # EXCEPTION: if the command starts with cmd, cmd.exe, or cmd /c, it's a
+    # cmd.exe command containing pipe characters, not a PowerShell command.
+    _starts_with_cmd = any(command.strip().lower().startswith(p)
+                          for p in ('cmd ', 'cmd.exe ', 'cmd/', 'cmd.exe/'))
+    _PS_SYNTAX = not _starts_with_cmd and any(
         kw in command for kw in ('|', '$_', '$env:', 'Get-', 'Set-', 'New-',
         'Remove-', 'Invoke-', 'Write-', 'Out-', 'Export-', 'Import-',
         'ConvertTo-', 'Start-Process', 'Stop-Process', 'Test-', 'Where-',
@@ -102,7 +108,13 @@ def execute_command(command: str, working_dir: str = None, use_session: bool = F
     if _PS_SYNTAX and sys.platform == 'win32':
         _is_ps = True
         base_cmd = 'powershell'
-        cmd_list = ['powershell', '-Command', command]
+        # For complex PowerShell commands with nested quotes, write to temp file
+        # to avoid quote-escaping hell
+        _cmd_path = _write_ps1_temp(command)
+        if _cmd_path:
+            cmd_list = ['powershell', '-ExecutionPolicy', 'Bypass', '-File', _cmd_path]
+        else:
+            cmd_list = ['powershell', '-Command', command]
     else:
         try:
             cmd_list = shlex.split(command, posix=(sys.platform != "win32"))
@@ -110,6 +122,13 @@ def execute_command(command: str, working_dir: str = None, use_session: bool = F
             return f"错误: 命令解析失败 - {e}"
         if not cmd_list:
             return "错误: 空命令"
+        # Strip matching surrounding quotes from each argument.
+        # shlex.split on Windows (posix=False) keeps quotes as part of the arg,
+        # which causes -c '"print()"' instead of -c 'print()' → empty output.
+        cmd_list = [
+            a[1:-1] if len(a) > 1 and a[0] == a[-1] and a[0] in ('"', "'") else a
+            for a in cmd_list
+        ]
         base_cmd = Path(cmd_list[0]).name.lower()
 
     # Only block commands that can permanently destroy the system
@@ -139,16 +158,31 @@ def execute_command(command: str, working_dir: str = None, use_session: bool = F
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     creationflags = 0x08000000 if (sys.platform == "win32" and SILENT_CMD and not _is_gui_launch) else 0
     try:
-        # cmd.exe outputs in system locale (GBK on Chinese Windows), not UTF-8
-        _enc = None if _use_cmd_wrapper else "utf-8"
+        # Always capture bytes, then decode with encoding detection.
+        # cmd.exe outputs in system locale (GBK on Chinese Windows), while
+        # Python subprocesses output UTF-8. Using bytes mode avoids silent
+        # data loss from encoding mismatch in text=True mode.
         result = subprocess.run(
             cmd_list, shell=False, cwd=cwd,
-            capture_output=True, text=True, timeout=CMD_TIMEOUT,
-            env=env, encoding=_enc, errors="replace",
+            capture_output=True, timeout=CMD_TIMEOUT,
+            env=env,
             creationflags=creationflags,
         )
-        output = (result.stdout or "").strip() or (result.stderr or "").strip()
-        return output[:8000] if len(output) > 8000 else output
+        raw = result.stdout or result.stderr or b""
+        if not raw:
+            return ""
+        # Detect encoding: try utf-8 first, then gbk (Chinese Windows), then utf-16
+        _decoded = False
+        for enc in ("utf-8", "gbk", "utf-16"):
+            try:
+                output = raw.decode(enc)
+                _decoded = True
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+        if not _decoded:
+            output = raw.decode("utf-8", errors="replace")
+        return output.strip()
     except FileNotFoundError:
         return f"错误: 命令未找到 - {cmd_list[0]}"
     except subprocess.TimeoutExpired:
@@ -391,6 +425,21 @@ def list_files(path: str = None) -> str:
         return "\n".join(lines) if lines else "(空目录)"
     except Exception as e:
         return f"错误: {e}"
+
+
+def _write_ps1_temp(command: str) -> str | None:
+    """Write a PowerShell command to a temp .ps1 file to avoid quoting issues.
+
+    Returns path to the .ps1 file, or None if writing fails.
+    """
+    try:
+        tmp_dir = Path(tempfile.gettempdir()) / "orca_ps1"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp = tmp_dir / f"cmd_{uuid.uuid4().hex[:8]}.ps1"
+        tmp.write_text(command, encoding="utf-8")
+        return str(tmp)
+    except Exception:
+        return None
 def search_files(pattern: str, directory: str = None) -> str:
     base = Path(directory) if directory else Path(WORKING_DIR)
 
@@ -400,7 +449,7 @@ def search_files(pattern: str, directory: str = None) -> str:
         result = _native_walk(str(base), pattern, 200)
         if result and not result.startswith("Error"):
             return "\n".join(f"  {r}" for r in result.split("\n")[:200])
-    except ImportError:
+    except Exception:
         pass
 
     try:
@@ -414,12 +463,13 @@ def search_content(pattern: str, directory: str = None, file_filter: str = None)
     base = Path(directory) if directory else Path(WORKING_DIR)
 
     # Try orca_native Rust engine first (10-100x faster on large projects)
+    # Catches Rust panics (e.g. multi-byte UTF-8 boundary issues) and falls back cleanly.
     try:
         from orca_native import search_content as _native_search
         result = _native_search(pattern, str(base), file_filter, 100, 0)
         if result and not result.startswith("Error"):
             return result
-    except ImportError:
+    except Exception:
         pass
 
     pattern_lower = pattern.lower()

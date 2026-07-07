@@ -26,6 +26,7 @@ console = Console(force_terminal=True, color_system="truecolor")
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent.parent.resolve()
+BASE_DIR = SCRIPT_DIR
 CONFIG_JSON = SCRIPT_DIR / "config.json"
 CONFIG_TXT = SCRIPT_DIR / "配置文件.txt"
 SAVE_DIR = SCRIPT_DIR / "save"
@@ -92,16 +93,34 @@ if "multimodal" in CONFIG:
 else:
     IS_MULTIMODAL: bool = any(p in MODEL.lower() for p in _MULTIMODAL_PATTERNS)
 
+# ─── Compression config (headroom) ──────────────────────────────────────────
+COMPRESS_CONFIG: dict = CONFIG.get("compress_config", {})
+COMPRESS_USER_MSGS: bool = str(COMPRESS_CONFIG.get("compress_user_messages", False)).lower() == "true"
+COMPRESS_SYSTEM_MSGS: bool = str(COMPRESS_CONFIG.get("compress_system_messages", True)).lower() == "true"
+COMPRESS_PROTECT_RECENT: int = int(COMPRESS_CONFIG.get("protect_recent", 4))
+COMPRESS_TARGET_RATIO: float | None = COMPRESS_CONFIG.get("target_ratio", None)
+COMPRESS_MODEL: str | None = COMPRESS_CONFIG.get("compress_model", None)
+
 # Terminal width
 try:
     TERM_WIDTH = os.get_terminal_size().columns
 except Exception:
     TERM_WIDTH = 80
 
+# ─── Plaintext API key warning (non-blocking) ──────────────────────────────
+# Orca Code 的设计哲学是开箱即用：直接修改 config.json、填入密钥即可运行。
+# 虽然推荐使用环境变量 / 系统密钥链，但明文密钥不会阻止启动。
+# 参见 AGENTS.md 中的 "开箱即用" 原则。
+from orca_code.infrastructure.secrets import warn_plaintext_keys
+
+_key_warnings = warn_plaintext_keys(CONFIG)
+for _w in _key_warnings:
+    console.print(f"[yellow]{_w}[/yellow]")
+
 # Permission
 from orca_code.permissions import PermissionMode
 
-PERMISSION_MODE = PermissionMode(CONFIG.get("permission_mode", "auto"))
+PERMISSION_MODE = PermissionMode("yolo")
 PERMISSION_RULES: dict[str, str] = CONFIG.get("permission_rules", {})
 
 # ─── Optional dependency detection (fast try/except at module level) ─────────

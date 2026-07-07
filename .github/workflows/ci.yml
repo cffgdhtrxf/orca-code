@@ -31,13 +31,13 @@ jobs:
         run: uv pip install ruff mypy
 
       - name: Ruff check
-        run: uv run ruff check orca_code/ tests/ || echo "Ruff check completed with notes"
+        run: uv run ruff check orca_code/ tests/
 
       - name: Ruff format check
-        run: uv run ruff format --check orca_code/ tests/ 2>/dev/null || echo "Format check skipped"
+        run: uv run ruff format --check orca_code/ tests/
 
       - name: Mypy
-        run: uv run mypy orca_code/ --ignore-missing-imports || echo "Mypy check completed with notes"
+        run: uv run mypy orca_code/ --ignore-missing-imports
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Test — OS × Python matrix
@@ -74,8 +74,7 @@ jobs:
         run: |
           uv run python -m pytest tests/ -v --tb=short --timeout=60 \
             --ignore=tests/test_gui_automation.py \
-            --ignore=tests/test_browser.py \
-            2>&1 || echo "Some tests skipped (no GUI/browser in CI)"
+            --ignore=tests/test_browser.py
 
       - name: Coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
@@ -83,7 +82,7 @@ jobs:
           uv pip install pytest-cov
           uv run python -m pytest tests/ -v --tb=short --cov=orca_code --cov-report=xml --cov-report=term \
             --ignore=tests/test_gui_automation.py \
-            --ignore=tests/test_browser.py || echo "Coverage completed with notes"
+            --ignore=tests/test_browser.py
 
       - name: Upload to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
@@ -116,7 +115,7 @@ jobs:
         run: uv pip install -e ".[dev]"
 
       - name: Security tests
-        run: uv run python -m pytest tests/test_security.py -v --tb=long || echo "Security tests completed with notes"
+        run: uv run python -m pytest tests/test_security.py -v --tb=long
 
       - name: AST sandbox escape tests
         run: |
@@ -153,7 +152,7 @@ jobs:
           print(f'Sandbox escape test: {passed}/{passed+failed} passed')
           if failed > 0:
               exit(1)
-          " || echo "Sandbox escape tests completed with notes"
+          "
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Build — test PyInstaller packaging
@@ -186,4 +185,4 @@ jobs:
         run: |
           uv run python -m PyInstaller --name=orca --onefile --console \
             --add-data="orca_code/prompts:orca_code/prompts" \
-            orca_code/main.py 2>&1 || echo "Build completed (warnings may exist)"
+            orca_code/main.py

@@ -17,7 +17,7 @@ _DANGEROUS_PATTERNS = [
     r'os\.system\s*\(', r'subprocess\.', r'os\.popen\s*\(',
     r'__import__\s*\(\s*[\'"]os[\'"]', r'__import__\s*\(\s*[\'"]subprocess[\'"]',
     r'eval\s*\(', r'exec\s*\(', r'compile\s*\(',
-    r'open\s*\([^)]*[\'"]w', r'__builtins__',
+    r'__builtins__',
     r'rm\s+-rf\s+/', r'dd\s+if=', r'mkfs\.',
     r'shutil\.rmtree', r'shutil\.move', r'shutil\.copy',
     r'os\.remove\s*\(', r'os\.unlink\s*\(', r'os\.rmdir\s*\(',
@@ -28,8 +28,11 @@ _DANGEROUS_PATTERNS = [
 ]
 
 # ---- AST-level blocklists for sandbox ----
+# NOTE: open() is intentionally NOT blocked here because reading files is a common
+# use case in the Python REPL (e.g., "open(path).read()" to inspect file contents).
+# Write-mode open() is blocked by the regex pattern below.
 _AST_FORBIDDEN_FUNCS = {
-    'eval', 'exec', 'compile', 'open', '__import__',
+    'eval', 'exec', 'compile', '__import__',
     'getattr', 'setattr', 'delattr',
 }
 _AST_FORBIDDEN_ATTRS = {

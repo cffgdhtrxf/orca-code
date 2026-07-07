@@ -162,6 +162,32 @@ def smart_trim_messages(messages: list, max_tokens: int = None,
     if total_tokens <= trigger:
         return messages
 
+    # ── L1: Headroom pre-compression (runs before LLM fallback) ────────────
+    try:
+        import logging as _hr_logging
+        _hr_logging.getLogger("headroom").setLevel(_hr_logging.ERROR)
+        from headroom import compress as _hr_compress
+        from headroom import CompressConfig as _HRConfig
+        from orca_code.config import (
+            COMPRESS_USER_MSGS, COMPRESS_SYSTEM_MSGS,
+            COMPRESS_PROTECT_RECENT, COMPRESS_MODEL, MODEL,
+        )
+        _cfg = _HRConfig(
+            compress_user_messages=COMPRESS_USER_MSGS,
+            compress_system_messages=COMPRESS_SYSTEM_MSGS,
+            protect_recent=COMPRESS_PROTECT_RECENT,
+        )
+        _r = _hr_compress(messages, model=COMPRESS_MODEL or MODEL, config=_cfg)
+        if _r.compression_ratio > 0.05:
+            messages = _r.messages
+            total_tokens = sum(_msg_tokens(m) for m in messages)
+            if total_tokens <= target:
+                return messages
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     # Find system message (may not always be at index 0)
     system_msg = None
     sys_idx = -1

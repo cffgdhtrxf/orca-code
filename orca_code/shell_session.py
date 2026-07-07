@@ -24,9 +24,12 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
+
+_IS_WINDOWS = sys.platform == "win32"
 
 
 class ShellSession:
@@ -157,16 +160,38 @@ class ShellSession:
             except Exception:
                 pass
 
+    def _pipe_read_available(self, timeout: float) -> bool:
+        """Check if data is available on stdout pipe (cross-platform).
+
+        On Unix: uses select.select. On Windows: select doesn't work with
+        pipes, so we use a short-lived thread to read with timeout.
+        """
+        if not _IS_WINDOWS:
+            import select
+            r, _, _ = select.select([self._process.stdout], [], [], timeout)
+            return bool(r)
+        # Windows: thread-based read
+        result = []
+        def _reader():
+            try:
+                chunk = self._process.stdout.read(4096)
+                if chunk:
+                    result.append(chunk)
+            except Exception:
+                pass
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+        t.join(timeout=timeout)
+        return bool(result)
+
     def _drain_output(self, timeout: float = 0.5):
         """Read and discard any pending output."""
         if not self._process:
             return
         try:
-            import select
             end = time.time() + timeout
             while time.time() < end:
-                r, _, _ = select.select([self._process.stdout], [], [], 0.1)
-                if not r:
+                if not self._pipe_read_available(0.1):
                     break
                 chunk = self._process.stdout.read(4096)
                 if not chunk:
@@ -181,10 +206,8 @@ class ShellSession:
         start = time.time()
 
         try:
-            import select
             while time.time() - start < timeout:
-                r, _, _ = select.select([self._process.stdout], [], [], 0.5)
-                if not r:
+                if not self._pipe_read_available(0.5):
                     continue
                 chunk = self._process.stdout.read(4096)
                 if not chunk:

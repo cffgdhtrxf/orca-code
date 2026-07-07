@@ -26,6 +26,11 @@ Config format (~/.orca/keybindings.json):
     "clear_input": "escape",
     "exit": "ctrl+d"
   }
+
+NOTE: This module provides configuration loading and help display, but
+integration with prompt_toolkit's KeyBindings registry is pending.
+Currently prompt_toolkit in main.py uses its own built-in defaults.
+See get_binding_help() for displaying the configured bindings to users.
 """
 
 from __future__ import annotations

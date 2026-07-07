@@ -44,16 +44,17 @@ class DeepSeekAdapter(OpenAICompatAdapter):
         # Inject DeepSeek-specific extensions
         body = json.loads(req.body)
 
-        # Thinking mode for DeepSeek
+        # Thinking mode for DeepSeek V4
         if input.thinking_enabled:
-            if "deepseek-reasoner" in input.model_id:
-                body.pop("thinking", None)  # reasoner always thinks, remove injected key
-            else:
-                body["thinking"] = {"type": "enabled"}
+            body["thinking"] = {"type": "enabled"}
 
-        # Reasoning effort for V3/R1 models
+        # Reasoning effort (high/max; low/medium map to high, xhigh maps to max)
         if "reasoning_effort" in body.get("extra_body", {}):
             body["reasoning_effort"] = input.reasoning_effort
+
+        # user_id for KV cache isolation and scheduling isolation
+        if input.user_id:
+            body["user_id"] = input.user_id
 
         # DeepSeek-specific: always include stream_options for usage
         body["stream_options"] = {"include_usage": True}
@@ -127,8 +128,7 @@ class DeepSeekAdapter(OpenAICompatAdapter):
         return True
 
     def supports_multimodal(self) -> bool:
-        # DeepSeek-V3 supports images
         return True
 
     def get_default_model(self) -> str:
-        return "deepseek-chat"
+        return "deepseek-v4-flash"

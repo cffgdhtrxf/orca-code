@@ -345,18 +345,119 @@ def _scan_skill_ast(code: str, name: str) -> str | None:
     return None
 
 
+def _scan_skill_ast(code: str, name: str) -> str | None:
+    """Extended AST scan covering advanced escape vectors.
+
+    In addition to the base _scan_skill_ast checks, blocks:
+    - Frame introspection (sys._getframe)
+    - Code object access (.__code__, .__code__.replace)
+    - Metaclass abuse (metaclass= keyword)
+    - Descriptor protocol dunders (__get__, __set__, __delete__)
+    - Subscript access to dangerous dunders (obj["__class__"])
+    - type() calls with three args (dynamic class creation)
+    - compile() builtin calls
+    - open() calls
+    - Any direct __import__() calls
+
+    Also runs static regex patterns ported from SkillSpector
+    (security_scan.py) covering prompt injection, data exfiltration,
+    privilege escalation, supply chain, anti-refusal, and agent snooping.
+    """
+    try:
+        tree = _ast.parse(code, filename=f"<skill:{name}>")
+    except SyntaxError as e:
+        return f"Skill syntax error: {e}"
+
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.Import, _ast.ImportFrom)):
+            return "Skill cannot import modules"
+
+        if isinstance(node, _ast.Attribute):
+            if isinstance(node.attr, str) and node.attr in _SKILL_DANGEROUS_ATTRS:
+                return f"Skill cannot access: {node.attr}"
+            if node.attr in ("__code__", "__func__", "__closure__"):
+                return f"Skill cannot access: {node.attr} (code object manipulation)"
+            if isinstance(node.value, _ast.Name) and node.value.id in _SKILL_BLACKLIST:
+                return f"Skill cannot access: {node.value.id}.{node.attr}"
+
+        if isinstance(node, _ast.Subscript):
+            if isinstance(node.slice, _ast.Constant) and isinstance(node.slice.value, str):
+                if node.slice.value in _SKILL_DANGEROUS_ATTRS:
+                    return f"Skill cannot subscript access: {node.slice.value}"
+
+        if isinstance(node, _ast.Call):
+            if isinstance(node.func, _ast.Name):
+                if node.func.id in _SKILL_BLACKLIST:
+                    return f"Skill cannot call: {node.func.id}"
+                if node.func.id == "type" and len(node.args) == 3:
+                    return "Skill cannot dynamically create classes with type(name, bases, dict)"
+                if node.func.id == "compile":
+                    return "Skill cannot call compile()"
+                if node.func.id == "open":
+                    return "Skill cannot call open()"
+            elif isinstance(node.func, _ast.Attribute):
+                if isinstance(node.func.value, _ast.Name):
+                    if node.func.value.id in _SKILL_BLACKLIST:
+                        return f"Skill cannot call: {node.func.value.id}.{node.func.attr}"
+                    if node.func.attr in ('__import__', 'eval', 'exec', 'compile'):
+                        return f"Skill cannot call: {node.func.value.id}.{node.func.attr}"
+
+        if isinstance(node, _ast.ClassDef):
+            for kw in node.keywords:
+                if kw.arg == "metaclass":
+                    return "Skill cannot use metaclass (metaclass abuse protection)"
+            for base in node.bases:
+                if isinstance(base, _ast.Call) and isinstance(base.func, _ast.Name):
+                    if base.func.id == "type":
+                        return "Skill cannot dynamically create classes"
+
+    return None
+
+
 def _safe_exec_skill(code: str, name: str):
-    """Execute a skill in a sandboxed environment."""
+    """Execute a skill in a process-isolated sandbox.
+
+    Three-layer defense:
+      1. Enhanced AST scan (static) — blocks imports, dangerous attrs,
+         eval/exec, metaclass abuse, code object manipulation, etc.
+      2. Subprocess canary (dynamic) — compiles and validates code in
+         an isolated subprocess with empty env; only proceeds if it
+         passes without crashes or escape attempts.
+      3. Restricted exec (in-process) — only reached if subprocess passed,
+         provides actual function objects for tool registration.
+
+    This layered approach means an attacker must bypass AST scanning AND
+    subprocess isolation AND restricted exec to escape — three independent
+    defense layers.
+    """
     error = _scan_skill_ast(code, name)
     if error:
         return error
 
+    # Step 1.5: Static regex patterns (SkillSpector-inspired)
+    try:
+        from orca_code.security_scan import scan_skill_blocking
+        scan_error = scan_skill_blocking(code, name)
+        if scan_error:
+            _log_escape_attempt(name, f"static_pattern:{scan_error[:100]}", code)
+            return scan_error
+    except ImportError:
+        pass
+    except Exception:
+        logger = logging.getLogger("orca_code.security")
+        logger.exception("Static pattern scan failed for skill '%s'", name)
+
+    # Step 2: Subprocess canary — if this fails, main process never execs
+    canary_error = _subprocess_validate_skill(code, name)
+    if canary_error:
+        return canary_error
+
+    # Step 3: Restricted exec (only reached if canary passed)
     import math
     restricted = {
         "__builtins__": {
             **_SKILL_SAFE_BUILTINS,
             "True": True, "False": False, "None": None,
-            "issubclass": issubclass,
         },
         "math": math,
     }
@@ -366,3 +467,110 @@ def _safe_exec_skill(code: str, name: str):
     except Exception as e:
         return f"Skill execution error: {e}"
     return local_ns
+
+
+def _subprocess_validate_skill(code: str, name: str) -> str | None:
+    """Run skill code in an isolated subprocess as a canary.
+
+    The subprocess has an empty environment (only PATH and SYSTEMROOT
+    preserved for basic Python bootstrapping). If the code tries to
+    access dangerous modules or escapes the exec sandbox, the subprocess
+    will crash/fail and the main process never execs the code.
+
+    Returns None if validation passes, or an error string if it fails.
+    """
+    import base64 as _base64
+    import json as _json
+    import os as _os
+    import subprocess as _subprocess
+    import sys as _sys
+    import tempfile as _tempfile
+
+    safe_builtins_keys = sorted(_SKILL_SAFE_BUILTINS.keys())
+    safe_keys_json = _json.dumps(safe_builtins_keys)
+    encoded_code = _base64.b64encode(code.encode("utf-8")).decode("ascii")
+    skill_name_json = _json.dumps(f"<skill:{name}>")
+
+    _sb_key_list = "[" + ",".join(_json.dumps(k) for k in safe_builtins_keys) + "]"
+    wrapper_lines = [
+        "import math, sys, base64",
+        "__builtins__ = {n: getattr(__builtins__, n) for n in dir(__builtins__)",
+        "  if n in " + _sb_key_list + "}",
+        "_c = base64.b64decode(" + _json.dumps(encoded_code) + ").decode()",
+        "local_ns = {}",
+        "try:",
+        "  exec(compile(_c, " + skill_name_json + ", 'exec'),",
+        "       {'__builtins__': __builtins__, 'math': math}, local_ns)",
+        "  print('__ORCA_CANARY_OK__')",
+        "  for _k, _v in local_ns.items():",
+        "    if callable(_v) and hasattr(_v, '__code__'):",
+        "      _co = _v.__code__",
+        "      for _c2 in _co.co_consts:",
+        "        if isinstance(_c2, type(_co)):",
+        "          print('__ORCA_CANARY_FAIL__:nested_code_object')",
+        "          raise SystemExit(1)",
+        "  print('__ORCA_CANARY_COMPLETE__')",
+        "except Exception as e:",
+        "  import traceback",
+        "  print('__ORCA_CANARY_FAIL__:' + str(e)[:300])",
+        "  traceback.print_exc()",
+    ]
+    wrapper = '\n'.join(wrapper_lines)
+
+    tmp = None
+    try:
+        with _tempfile.NamedTemporaryFile(
+            mode='w', suffix='.py', delete=False,
+            encoding='utf-8'
+        ) as f:
+            f.write(wrapper)
+            tmp = f.name
+
+        result = _subprocess.run(
+            [_sys.executable, tmp],
+            capture_output=True, text=True, timeout=30,
+            env={
+                "PATH": _os.environ.get("PATH", ""),
+                "SYSTEMROOT": _os.environ.get("SYSTEMROOT", ""),
+            },
+        )
+
+        stdout = (result.stdout or "") + (result.stderr or "")
+
+        if "__ORCA_CANARY_FAIL__:" in stdout:
+            err_msg = stdout.split("__ORCA_CANARY_FAIL__:")[1].split("\n")[0].strip()
+            _log_escape_attempt(name, err_msg, code)
+            return f"Skill validation error: {err_msg}"
+
+        if "__ORCA_CANARY_OK__" in stdout and "__ORCA_CANARY_COMPLETE__" in stdout:
+            return None
+
+        if result.returncode != 0:
+            err_detail = (result.stderr or result.stdout or "unknown")[:200]
+            _log_escape_attempt(name, f"exit:{result.returncode}:{err_detail}", code)
+            return f"Skill validation error: subprocess crashed (exit code {result.returncode})"
+
+        _log_escape_attempt(name, "unknown_failure", code)
+        return "Skill validation error: subprocess produced no valid output"
+
+    except _subprocess.TimeoutExpired:
+        _log_escape_attempt(name, "timeout_30s", code)
+        return "Skill validation error: timeout (30s)"
+    except Exception as e:
+        return f"Skill validation error: {e}"
+    finally:
+        if tmp is not None:
+            try:
+                _os.unlink(tmp)
+            except Exception:
+                pass
+
+
+def _log_escape_attempt(skill_name: str, reason: str, code: str):
+    """Log a skill sandbox escape attempt for audit."""
+    import logging
+    logger = logging.getLogger("orca_code.security")
+    logger.warning(
+        "Skill sandbox: potential escape attempt in '%s': %s\nCode:\n%s",
+        skill_name, reason, code[:1000],
+    )

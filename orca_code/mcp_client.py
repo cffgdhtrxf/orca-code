@@ -20,6 +20,7 @@ import logging
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -447,6 +448,30 @@ def load_mcp_configs_from_dict(data: dict) -> list[McpServerConfig]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _mcp_registry: McpRegistry | None = None
+
+
+def load_mcp_configs_with_fallback(data: dict) -> list[McpServerConfig]:
+    """Load MCP configs from config dict, with fallback to legacy .assistant_mcp.json."""
+    configs = load_mcp_configs_from_dict(data)
+    if configs:
+        return configs
+    from orca_code.config import WORKING_DIR
+    for p in [Path(WORKING_DIR) / ".assistant_mcp.json", Path.home() / ".assistant_mcp.json"]:
+        if p.exists():
+            try:
+                legacy = json.loads(p.read_text(encoding="utf-8")).get("mcpServers", {})
+                for name, cfg in legacy.items():
+                    configs.append(McpServerConfig(
+                        name=name,
+                        command=cfg.get("command"),
+                        args=cfg.get("args", []),
+                        env=cfg.get("env", {}),
+                        enabled=True,
+                    ))
+            except Exception:
+                pass
+            break
+    return configs
 
 
 def get_mcp_registry() -> McpRegistry:

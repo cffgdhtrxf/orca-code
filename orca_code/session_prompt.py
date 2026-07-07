@@ -12,6 +12,8 @@ import logging
 import platform as _platform
 from datetime import datetime
 
+from pathlib import Path
+
 from orca_code.config import (
     BASE_URL,
     CONTEXT_MAX_TOKENS,
@@ -39,6 +41,48 @@ except ImportError:
     _HAS_TEMPLATES = False
 
 
+def _build_skills_list() -> str:
+    """Scan skills/lifecycle/ and return a formatted skills section for the prompt."""
+    skills_dir = Path(__file__).parent.parent / "skills" / "lifecycle"
+    if not skills_dir.exists():
+        return ""
+    lines = ["\nAvailable Lifecycle Skills (use /<command> or auto-trigger):"]
+    for phase_dir in sorted(skills_dir.iterdir()):
+        if not phase_dir.is_dir():
+            continue
+        for md_file in sorted(phase_dir.glob("*.md")):
+            try:
+                text = md_file.read_text(encoding="utf-8")
+                name = ""
+                desc = ""
+                for line in text.splitlines():
+                    if line.startswith("name:"):
+                        name = line.split(":", 1)[1].strip()
+                    elif line.startswith("title:"):
+                        desc = line.split(":", 1)[1].strip()
+                    if name and desc:
+                        break
+                if name:
+                    lines.append(f"  {name} — {desc}")
+            except Exception:
+                continue
+    return "\n".join(lines)
+
+
+def _load_project_instructions() -> str:
+    """Read AGENTS.md or CLAUDE.md from the workspace and return as instructions block."""
+    for fname in ("AGENTS.md", "CLAUDE.md", "CONTEXT.md"):
+        fp = WORKING_DIR / fname
+        if fp.exists():
+            try:
+                content = fp.read_text(encoding="utf-8", errors="replace").strip()
+                if content:
+                    return f"\nInstructions from: {fp}\n{content[:2000]}"
+            except Exception:
+                continue
+    return ""
+
+
 def build_system_prompt() -> str:
     # ---- Simple prompt for Gemma / Qwen / Ministral ----
     if USE_SIMPLE_PROMPT:
@@ -64,6 +108,14 @@ def build_system_prompt() -> str:
             "- 查天气前先调 get_location\n"
             "- web_search 后用 read_webpage 读取结果页面\n"
             "- 只在用户明确要求时使用 GUI/浏览器自动化\n"
+            "生命周期工作流：\n"
+            "- 新功能/需求不明确 → 自动触发 spec-driven-development（规格定义）\n"
+            "- 有了规格需分解任务 → 自动触发 planning-and-task-breakdown（计划分解）\n"
+            "- 实现代码 → 自动触发 incremental-implementation（增量实现）\n"
+            "- 测试/调试 → 自动触发 debugging-and-error-recovery（调试恢复）\n"
+            "- 代码审查/质量改进 → 自动触发 code-review-and-quality（代码审查）\n"
+            "- 部署/发布 → 自动触发 shipping-and-launch（发布上线）\n"
+            "- 可用 /spec /plan /build /test /review /code-simplify /ship /webperf 命令手动进入各阶段\n"
         )
         if IS_MULTIMODAL:
             prompt += "\n你可以直接查看图片，无需调用 analyze_image。"
@@ -95,7 +147,19 @@ def build_system_prompt() -> str:
         "- File output always to output/ relative path.\n"
         "- Manage skills via load_skill/create_skill/edit_skill/list_skills and load_md_skill/list_md_skills.\n"
         "- Manage tasks via add_task/list_tasks/remove_task.\n"
-        "- Only use GUI/browser automation when explicitly asked or when CLI path is exhausted.\n"
+        "- Only use GUI/browser automation when explicitly asked or when CLI path is exhausted.\n\n"
+        "LIFECYCLE WORKFLOW — 根据用户意图自动路由到对应阶段：\n"
+        "- 新功能/需求不明确 → spec-driven-development（/spec）\n"
+        "- 有了规格需分解任务 → planning-and-task-breakdown（/plan）\n"
+        "- 实现代码 → incremental-implementation（/build /build auto）\n"
+        "- 测试驱动 → test-driven-development（/test）\n"
+        "- 调试 → debugging-and-error-recovery\n"
+        "- 代码审查 → code-review-and-quality + 可选：code-simplification（/review /code-simplify）\n"
+        "- 安全审查 → security-and-hardening\n"
+        "- 性能优化 → performance-optimization\n"
+        "- 发布准备 → shipping-and-launch（/ship）\n"
+        "- Web 性能 → browser-testing-with-devtools（/webperf）\n"
+        "Article VI 规定：不得以'任务太小'、'直接做更快'等理由跳过生命周期阶段。\n"
     )
     if IS_MULTIMODAL:
         prompt += (
@@ -112,6 +176,16 @@ def build_system_prompt() -> str:
         "use recall_conversation to search in the USER'S LANGUAGE. "
         "Try broad queries first, then narrow. If no results, try a different query before giving up."
     )
+
+    # Inject available lifecycle skills list
+    skills_section = _build_skills_list()
+    if skills_section:
+        prompt += "\n\n" + skills_section
+
+    # Inject project instructions (AGENTS.md/CLAUDE.md)
+    project_instructions = _load_project_instructions()
+    if project_instructions:
+        prompt += "\n\n" + project_instructions
 
     # User profile
     profile_parts = []

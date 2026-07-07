@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -211,97 +212,7 @@ def voice_input():
     except Exception as e:
         console.print(f"[red]Voice error: {e}[/red]")
         return None
-def _load_mcp_config() -> dict:
-    for p in [Path(WORKING_DIR) / ".assistant_mcp.json", Path.home() / ".assistant_mcp.json"]:
-        if p.exists():
-            try:
-                return json.loads(p.read_text(encoding="utf-8")).get("mcpServers", {})
-            except Exception as e:
-                logging.debug("MCP config read error (%s): %s", p, e)
-    return {}
-def mcp_call_tool(qualified_name: str, arguments: dict) -> str:
-    config = _load_mcp_config()
-    if not qualified_name.startswith("mcp_"):
-        return f"错误: 无效的 MCP 工具名 {qualified_name}"
-    inner = qualified_name[4:]
-    sep = inner.find("_")
-    if sep == -1:
-        return f"错误: 无法解析 MCP 工具名 {qualified_name}"
-    server_name = inner[:sep]
-    tool_name = inner[sep + 1:]
-    server_config = config.get(server_name)
-    if not server_config:
-        return f"错误: MCP 服务器 '{server_name}' 未配置"
-
-    async def _call():
-        try:
-            from mcp import ClientSession, StdioServerParameters
-            from mcp.client.stdio import stdio_client
-            params = StdioServerParameters(
-                command=server_config["command"],
-                args=server_config.get("args", []),
-                env=server_config.get("env"),
-            )
-            async with stdio_client(params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    result = await session.call_tool(tool_name, arguments)
-                    parts = []
-                    for item in result.content:
-                        if hasattr(item, "text"):
-                            parts.append(item.text)
-                        else:
-                            parts.append(str(item))
-                    return "\n".join(parts)[:8000]
-        except ImportError:
-            return "错误: 请安装 mcp 包: pip install mcp"
-        except Exception as e:
-            return f"错误: MCP 调用失败 - {e}"
-
-    return asyncio.run(_call())
-def _enumerate_mcp_tools() -> list:
-    config = _load_mcp_config()
-    tools = []
-    for server_name, server_config in config.items():
-        async def _list():
-            try:
-                from mcp import ClientSession, StdioServerParameters
-                from mcp.client.stdio import stdio_client
-                params = StdioServerParameters(
-                    command=server_config["command"],
-                    args=server_config.get("args", []),
-                    env=server_config.get("env"),
-                )
-                async with stdio_client(params) as (read, write):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        result = await session.list_tools()
-                        for tool in result.tools:
-                            tools.append({
-                                "type": "function",
-                                "function": {
-                                    "name": f"mcp_{server_name}_{tool.name}",
-                                    "description": tool.description or f"MCP tool: {server_name}/{tool.name}",
-                                    "parameters": tool.inputSchema or {"type": "object", "properties": {}},
-                                }
-                            })
-            except Exception as e:
-                logging.debug("MCP tool enum error (server=%s): %s", server_name, e)
-        try:
-            asyncio.run(_list())
-        except Exception:
-            pass
-    return tools
-def init_mcp_tools():
-    if "--no-mcp" in sys.argv:
-        return []
-    from orca_code.tool_registry import TOOL_MAP, TOOLS
-    mcp_tools = _enumerate_mcp_tools()
-    if mcp_tools:
-        for t in mcp_tools:
-            TOOLS.append(t)
-            name = t["function"]["name"]
-            def _make_mcp(_n=name):
-                return lambda **kw: mcp_call_tool(_n, kw)
-            TOOL_MAP[name] = _make_mcp()
-    return mcp_tools
+# ═══════════════════════════════════════════════════════════════════════════════
+# MCP functions removed in v5.4 — replaced by orca_code.mcp_client (McpRegistry)
+# Legacy .assistant_mcp.json configs are loaded via load_mcp_configs_with_fallback
+# ═══════════════════════════════════════════════════════════════════════════════

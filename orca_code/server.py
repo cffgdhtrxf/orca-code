@@ -1186,7 +1186,8 @@ async def recover_sessions():
             if len(valid) < len(lines):
                 f.write_text("\n".join(valid) + "\n", encoding="utf-8")
                 recovered += 1
-        except Exception: pass
+        except Exception:
+            logging.exception("Session recovery failed")
     return {"recovered_files": recovered, "removed_lines": removed}
 
 

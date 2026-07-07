@@ -30,13 +30,19 @@ class UsageBudget:
                 d = json.loads(p.read_text())
                 self._tokens_today = d.get("tokens", 0)
                 self._cost_today = d.get("cost", 0.0)
-        except: pass
+        except Exception as _e:
+            import logging
+            logging.getLogger("orca_code.usage_budget").warning(
+                "Failed to load budget: %s", _e)
     def _save(self):
         try:
             p = Path.home() / ".orca" / "budget.json"
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps({"tokens": self._tokens_today, "cost": round(self._cost_today, 4)}))
-        except: pass
+        except Exception as _e:
+            import logging
+            logging.getLogger("orca_code.usage_budget").warning(
+                "Failed to save budget: %s", _e)
     def record(self, model: str, input_tokens: int, output_tokens: int):
         with self._lock:
             self._tokens_today += input_tokens + output_tokens

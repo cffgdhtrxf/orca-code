@@ -350,31 +350,38 @@ class SecretStore:
 
 # ─── Plaintext warning ──────────────────────────────────────────────────────
 
-def warn_plaintext_keys(config_keys: dict) -> list[str]:
-    """Check for plaintext API keys in config and return warnings.
+PLAINTEXT_KEY_PREFIXES = ("sk-", "tvly-", "sk-ant-", "sk-or-", "org-")
 
-    Call this at startup. Returns a list of warning messages.
-    If the list is non-empty, display each warning to the user.
+SENSITIVE_KEYS = {
+    "api_key": "ORCA_API_KEY",
+    "tavily_api_key": "ORCA_TAVILY_KEY",
+    "memory_api_key": "ORCA_MEMORY_API_KEY",
+    "vision_api_key": "ORCA_VISION_API_KEY",
+}
+
+
+def warn_plaintext_keys(config_keys: dict) -> list[str]:
+    """Warn about real-looking API keys stored in plaintext config.json.
+
+    Orca Code 设计为开箱即用：直接修改 config.json 填入密钥即可运行。
+    此函数仅打印警告，不阻止启动。
+
+    推荐做法（可选）：
+    1. 设置环境变量 ORCA_API_KEY=sk-xxx（优先级最高）
+    2. 使用系统密钥链：python -m orca_code.infrastructure.secrets store api_key sk-xxx
+    3. 直接修改 config.json（最简单，开箱即用）
     """
     warnings = []
-    sensitive_keys = {
-        "api_key": "ORCA_API_KEY",
-        "tavily_api_key": "ORCA_TAVILY_KEY",
-        "memory_api_key": "ORCA_MEMORY_API_KEY",
-        "vision_api_key": "ORCA_VISION_API_KEY",
-    }
-
-    for key, env_var in sensitive_keys.items():
+    for key, env_var in SENSITIVE_KEYS.items():
         value = config_keys.get(key, "")
-        if value and len(value) > 10:
-            # Check if it looks like a real key (not a placeholder)
-            if any(value.startswith(p) for p in ("sk-", "tvly-", "sk-ant-", "sk-or-", "org-")):
-                warnings.append(
-                    f"⚠️  '{key}' is stored in plaintext in config.json.\n"
-                    f"   Set environment variable {env_var} instead, or use:\n"
-                    f"   python -m orca_code.infrastructure.secrets store {key}"
-                )
-
+        if not value or len(value) <= 10:
+            continue
+        if any(value.startswith(p) for p in PLAINTEXT_KEY_PREFIXES):
+            warnings.append(
+                f"'{key}' 以明文存储在 config.json 中。"
+                f" 推荐设置环境变量 {env_var}=<key> 或使用系统密钥链。"
+                f" 非安全环境可忽略此警告。"
+            )
     return warnings
 
 

@@ -86,13 +86,17 @@ from orca_code.tools_skills import (  # Skills & task scheduler (8 tools)
     load_skill,
     remove_task,
 )
-from orca_code.tools_web import (  # Web/search/weather tools (5 tools)
+from orca_code.tools_web import (  # Web/search/weather tools (8 tools)
     get_location,
     get_weather,
     read_webpage,
+    tavily_crawl,
+    tavily_extract,
+    tavily_map,
     web_fetch,
     web_search,
 )
+from orca_code.tools_memory import recall_conversation, update_profile
 from orca_code.tts_mcp import speak_text
 
 # ─── Optional: Coordinator ─────────────────────────────────────────────────
@@ -119,791 +123,40 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TOOLS — OpenAI-format tool definitions
+# TOOLS — OpenAI-format tool definitions (auto-generated from class registry)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-TOOLS: list[dict[str, Any]] = [
-    # ── Core tools ──
-    {
-        "type": "function",
-        "function": {
-            "name": "execute_command",
-            "description": "Run a shell command. Set use_session=true to run in a persistent shell that keeps env vars, cwd, and history across calls (like a real terminal). Use for multi-step workflows: cd + build + test. Default: one-shot execution.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "要执行的命令"},
-                    "working_dir": {"type": "string", "description": "工作目录，默认为当前目录"},
-                    "use_session": {"type": "boolean", "description": "在持久化 shell 会话中运行（保持环境变量和目录状态）。适合多步操作如 cd && build && test。默认: false"}
-                },
-                "required": ["command"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read file (auto-detect encoding)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "文件绝对路径"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Create/overwrite file. Python/script files go to output/ dir; text/data files also go to output/. Temp/test scratch files use temp/ prefix.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "File path. Relative paths go to output/ folder. Use output/script.py for code."},
-                    "content": {"type": "string", "description": "要写入的内容"}
-                },
-                "required": ["path", "content"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "edit_file",
-            "description": "Precise string replacement in a file. Provide old_string (must be unique) and new_string. Optional hashline for stale-anchor detection: format 'L<num>:<hash>' to verify line hasn't changed since read. Use hashline when you've read the file and want to prevent conflicts with external changes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "File path"},
-                    "old_string": {"type": "string", "description": "The exact text to replace (must be unique in file)"},
-                    "new_string": {"type": "string", "description": "The replacement text"},
-                    "hashline": {"type": "string", "description": "Comma-separated anchors like 'L42:a1b2c3'. Each line hash verified before edit — refuses edit if file changed (stale anchor detection)."}
-                },
-                "required": ["path", "old_string", "new_string"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "apply_diff",
-            "description": "Apply a unified diff to a file. Use for batch changes from git diff output. Supports standard @@ -x,y +a,b @@ hunk format.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Target file path"},
-                    "diff_text": {"type": "string", "description": "Unified diff text to apply"}
-                },
-                "required": ["path", "diff_text"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_files",
-            "description": "List files and subdirectories",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "目录绝对路径，默认为当前目录"}
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_files",
-            "description": "Search files by glob pattern",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "pattern": {"type": "string", "description": "glob 模式，如 **/*.py"},
-                    "directory": {"type": "string", "description": "搜索起始目录，默认为当前目录"}
-                },
-                "required": ["pattern"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_content",
-            "description": "Search text in files",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "pattern": {"type": "string", "description": "搜索文本或正则"},
-                    "directory": {"type": "string", "description": "搜索目录，默认为当前目录"},
-                    "file_filter": {"type": "string", "description": "文件名过滤，如 *.py"}
-                },
-                "required": ["pattern"]
-            }
-        }
-    },
-    # ── Office tools ──
-    {
-        "type": "function",
-        "function": {
-            "name": "read_excel",
-            "description": "Read Excel file, optional sheet name",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Excel 文件绝对路径"},
-                    "sheet_name": {"type": "string", "description": "工作表名称，默认第一个"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_excel",
-            "description": "Write Excel file from JSON data",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Excel 文件绝对路径"},
-                    "data": {"type": "string", "description": "JSON 格式数据"},
-                    "sheet_name": {"type": "string", "description": "工作表名称，默认 Sheet1"}
-                },
-                "required": ["path", "data"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_word",
-            "description": "Extract text from Word document",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Word 文件绝对路径"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_word",
-            "description": "Create Word document",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Word 文件绝对路径"},
-                    "content": {"type": "string", "description": "文档纯文本内容"},
-                    "title": {"type": "string", "description": "文档标题（可选）"}
-                },
-                "required": ["path", "content"]
-            }
-        }
-    },
-    # ── Screenshot & OCR ──
-    {
-        "type": "function",
-        "function": {
-            "name": "take_screenshot",
-            "description": "Take screenshot (fullscreen or by window)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "window_title": {"type": "string", "description": "窗口标题关键字，为空则全屏"},
-                    "save_path": {"type": "string", "description": "保存路径，默认 temp/screenshot.png"}
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ocr_image",
-            "description": "OCR image to extract Chinese/English text",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "图片文件绝对路径"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    # ── Web & location ──
-    {
-        "type": "function",
-        "function": {
-            "name": "web_fetch",
-            "description": "Fetch raw web page content",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "URL"}
-                },
-                "required": ["url"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_webpage",
-            "description": "Extract readable text from web page",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "网页 URL"}
-                },
-                "required": ["url"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Query weather by city (via wttr.in); call get_location first",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "城市名（中文或英文），如 北京/Shanghai"}
-                },
-                "required": ["location"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_location",
-            "description": "Get current location via Windows Location API (GPS/WiFi). Use this to find the user's city — do NOT try execute_command or web_fetch for location. Call this first before get_weather.",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Web search; use topic=news, days=3 for news",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "搜索关键词"},
-                    "topic": {"type": "string", "description": "news 或 general，默认 general"},
-                    "days": {"type": "integer", "description": "只搜最近N天，查新闻时建议3-7"}
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    # ── Skills system ──
-    {
-        "type": "function",
-        "function": {
-            "name": "load_skill",
-            "description": "Load a skill script from skills/",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "技能文件名（不含 .py）"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_skill",
-            "description": "Create a new skill script",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "技能文件名（不含 .py）"},
-                    "code": {"type": "string", "description": "完整 Python 代码"}
-                },
-                "required": ["name", "code"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "edit_skill",
-            "description": "Edit a skill script",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "技能文件名（不含 .py）"},
-                    "code": {"type": "string", "description": "新的完整 Python 代码"}
-                },
-                "required": ["name", "code"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_skills",
-            "description": "List all skill scripts (.py and .md)",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "load_md_skill",
-            "description": "Load a .md behavioral skill (SKILL.md format) that guides your thinking and interaction protocol",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "技能文件名（不含 .md）"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_md_skills",
-            "description": "List all available .md behavioral skills with their triggers",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    # ── Scheduled tasks ──
-    {
-        "type": "function",
-        "function": {
-            "name": "add_task",
-            "description": "Add scheduled task (interval or cron)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "任务名称"},
-                    "mode": {"type": "string", "description": "interval 或 cron"},
-                    "schedule": {"type": "string", "description": "interval 时为秒数，cron 时为 '分 时 日 月 周'"},
-                    "action": {"type": "string", "description": "execute_command / web_search / ai_review"},
-                    "params": {"type": "string", "description": "JSON 格式的参数"}
-                },
-                "required": ["name", "mode", "schedule", "action"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_tasks",
-            "description": "List all scheduled tasks",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "remove_task",
-            "description": "Remove a scheduled task by name",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "任务名称"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-    # ── GUI automation ──
-    {
-        "type": "function",
-        "function": {
-            "name": "gui_click",
-            "description": "Click at screen coords (needs GUI auto)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {"type": "integer", "description": "X 坐标"},
-                    "y": {"type": "integer", "description": "Y 坐标"},
-                    "button": {"type": "string", "description": "left / right / middle，默认 left"},
-                    "clicks": {"type": "integer", "description": "点击次数，默认 1"}
-                },
-                "required": ["x", "y"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "gui_type",
-            "description": "Type text at focus (needs GUI auto)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "text": {"type": "string", "description": "要输入的文本"},
-                    "interval": {"type": "number", "description": "每个字符间隔秒数，默认 0.01"}
-                },
-                "required": ["text"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "gui_move",
-            "description": "Move mouse to screen coords",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {"type": "integer", "description": "X 坐标"},
-                    "y": {"type": "integer", "description": "Y 坐标"},
-                    "duration": {"type": "number", "description": "移动耗时秒数，默认 0.5"}
-                },
-                "required": ["x", "y"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "gui_hotkey",
-            "description": "Send keyboard shortcut / hotkey. Use for Win+S, Ctrl+C, Alt+Tab etc. Do NOT use gui_type for shortcuts.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "keys": {"type": "array", "items": {"type": "string"},
-                             "description": "Key names in order. win=Windows key. e.g. ['win','s'] for Win+S, ['ctrl','c'] for Ctrl+C"}
-                },
-                "required": ["keys"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "gui_press",
-            "description": "Press a single key: enter, tab, escape, backspace, delete, space, etc. For combos use gui_hotkey. Works on UWP apps (WeChat, etc).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string", "description": "Key name: enter, tab, escape, backspace, delete, space, up, down, left, right"}
-                },
-                "required": ["key"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "window_focus",
-            "description": "Find a window by title (partial match) and bring it to foreground. Use BEFORE typing/clicking into an app.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Part of the window title. e.g. '微信' for WeChat, '记事本' for Notepad"}
-                },
-                "required": ["title"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "find_on_screen",
-            "description": "Screenshot + OCR → find text/button positions. Returns center coords and bounds. Use instead of execute_python pixel scanning.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "description": {"type": "string", "description": "Text to find on screen. e.g. '发送', '搜索', '周桓'. Returns coordinates for clicking."}
-                },
-                "required": ["description"]
-            }
-        }
-    },
-    # ── Browser automation ──
-    {
-        "type": "function",
-        "function": {
-            "name": "browser_open",
-            "description": "Open browser to URL (needs browser auto)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "要访问的 URL"},
-                    "headless": {"type": "boolean", "description": "是否无头模式，默认 false"}
-                },
-                "required": ["url"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "browser_click",
-            "description": "Click element by CSS selector",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "selector": {"type": "string", "description": "CSS 选择器"}
-                },
-                "required": ["selector"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "browser_type",
-            "description": "Type text into input field",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "selector": {"type": "string", "description": "CSS 选择器"},
-                    "text": {"type": "string", "description": "要输入的文本"}
-                },
-                "required": ["selector", "text"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "browser_screenshot",
-            "description": "Screenshot browser page",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "output_path": {"type": "string", "description": "保存路径，默认 temp/browser_screenshot.png"}
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "browser_close",
-            "description": "Close browser, clean temp profile",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    # ── System info ──
-    {
-        "type": "function",
-        "function": {
-            "name": "get_system_info",
-            "description": "Get system hardware and runtime info",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    # ── LSP ──
-    {
-        "type": "function",
-        "function": {
-            "name": "lsp_diagnostics",
-            "description": "Get language server diagnostics (errors/warnings) for a file. Supports Python, TypeScript, Rust, Go. Requires LSP server installed (pylsp, ts-ls, rust-analyzer, gopls).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "Absolute path to the source file"}
-                },
-                "required": ["file_path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "lsp_references",
-            "description": "Find all references to a symbol at a position (Go to References).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "File path"},
-                    "line": {"type": "integer", "description": "Line number (1-based)"},
-                    "column": {"type": "integer", "description": "Column number (1-based, default 1)"}
-                },
-                "required": ["file_path", "line"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "lsp_definition",
-            "description": "Go to the definition of a symbol at a position.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "File path"},
-                    "line": {"type": "integer", "description": "Line number (1-based)"},
-                    "column": {"type": "integer", "description": "Column number (1-based, default 1)"}
-                },
-                "required": ["file_path", "line"]
-            }
-        }
-    },
-    # ── Git ──
-    {"type": "function", "function": {"name": "git_status", "description": "Git status", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}}, "required": []}}},
-    {"type": "function", "function": {"name": "git_diff", "description": "Git diff", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}, "staged": {"type": "boolean"}}, "required": []}}},
-    {"type": "function", "function": {"name": "git_log", "description": "Git log", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}, "max_count": {"type": "integer"}}, "required": []}}},
-    {"type": "function", "function": {"name": "git_blame", "description": "Git blame", "parameters": {"type": "object", "properties": {"repo_path": {"type": "string"}, "file": {"type": "string"}}, "required": ["file"]}}},
-    {"type": "function", "function": {"name": "go_to_definition", "description": "Find symbol definition", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "line": {"type": "integer"}, "column": {"type": "integer"}, "symbol": {"type": "string"}}, "required": ["file_path"]}}},
-    {"type": "function", "function": {"name": "find_references", "description": "Find symbol references", "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}, "directory": {"type": "string"}, "file_filter": {"type": "string"}}, "required": ["symbol"]}}},
-    {"type": "function", "function": {"name": "analyze_image", "description": "Analyze image content", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}, "question": {"type": "string"}}, "required": ["image_path"]}}},
-    {"type": "function", "function": {"name": "capture_camera", "description": "Capture camera frame and analyze", "parameters": {"type": "object", "properties": {"camera_index": {"type": "integer"}, "question": {"type": "string"}}, "required": []}}},
-    # ── Python REPL ──
-    {
-        "type": "function",
-        "function": {
-            "name": "execute_python",
-            "description": "Execute Python code in a persistent REPL session. Variables persist across calls. Use for calculations, data analysis, or testing logic. Call with '__reset__' to clear session, '__info__' to check status.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {"type": "string", "description": "Python code to execute"},
-                    "timeout": {"type": "integer", "description": "Max execution time in seconds, default 30"}
-                },
-                "required": ["code"]
-            }
-        }
-    },
-    # ── Memory & profile ──
-    {
-        "type": "function",
-        "function": {
-            "name": "recall_conversation",
-            "description": "Search past conversation history. Use when the user asks about earlier topics, past decisions, or needs context from previous sessions. Returns relevant conversation snippets with timestamps.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search keywords or question"},
-                    "limit": {"type": "integer", "description": "Max results, default 5 (1-20)"}
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_profile",
-            "description": "Add a note to the evolving user profile. Use when you learn about the user's preferences, coding style, projects, tools, language preference, or answer format preference. The profile persists across sessions and is injected into the system prompt.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "note": {"type": "string", "description": "What you learned about the user, e.g. 'prefers concise answers', 'works on a Python web project', 'uses VS Code', 'wants Chinese replies'"}
-                },
-                "required": ["note"]
-            }
-        }
-    },
-    # ── Sub-agents ──
-    {
-        "type": "function",
-        "function": {
-            "name": "agent_open",
-            "description": "Launch a background sub-agent to investigate a task. Non-blocking — returns a handle immediately. Use for parallel research like searching multiple files simultaneously. Max 5 concurrent agents.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "What the sub-agent should do. Be specific."},
-                    "tools": {"type": "string", "description": "Comma-separated tool names. Default: read_file,search_content,list_files."},
-                    "context": {"type": "string", "description": "Optional additional context"}
-                },
-                "required": ["task"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "agent_eval",
-            "description": "Get the result of a previously launched sub-agent. Blocks until completion (up to 60s). Returns structured findings summary.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "handle": {"type": "string", "description": "Handle from agent_open (format: sub://XXXXX)."},
-                    "timeout": {"type": "integer", "description": "Max seconds to wait. Default 60."}
-                },
-                "required": ["handle"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "agent_close",
-            "description": "Terminate a running sub-agent and clean up.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "handle": {"type": "string", "description": "Handle from agent_open (format: sub://XXXXX)."}
-                },
-                "required": ["handle"]
-            }
-        }
-    },
-    # ── Coordinator (multi-agent orchestration) ──
-    {
-        "type": "function",
-        "function": {
-            "name": "coordinator_parallel",
-            "description": "Run multiple tasks in parallel across sub-agents. Provide a JSON array of task strings. Use for research that can be done concurrently — e.g. analyzing multiple files, searching different directories simultaneously. Max 5 tasks.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "tasks_json": {"type": "string", "description": "JSON array of task descriptions, e.g. '[\"analyze utils.py for bugs\", \"review main.py for performance\"]'"},
-                    "tools": {"type": "string", "description": "Comma-separated tool names for workers. Default: read_file,search_content,list_files."}
-                },
-                "required": ["tasks_json"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "coordinator_pipeline",
-            "description": "Run tasks sequentially in a pipeline. Each stage receives the context from prior stages. Use for multi-step workflows: code analysis → refactoring → validation. Each stage sees prior results.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "stages_json": {"type": "string", "description": "JSON array of stage descriptions in order. Stage 2 sees Stage 1 output, etc."},
-                    "tools": {"type": "string", "description": "Comma-separated tool names shared across stages."}
-                },
-                "required": ["stages_json"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "coordinator_judge",
-            "description": "Generate N independent solutions to a task then judge which is best. Use for high-stakes decisions where multiple perspectives help: architecture designs, complex bug fixes, security reviews. Returns judge's verdict and solution summaries.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "The task needing multiple solutions"},
-                    "n_solutions": {"type": "integer", "description": "Number of independent solutions (1-5, default 3). Higher = more thorough but slower."},
-                    "tools": {"type": "string", "description": "Comma-separated tool names for solution workers."}
-                },
-                "required": ["task"]
-            }
-        }
-    },
-]
+def _build_tools_schema() -> list[dict[str, Any]]:
+    """Build TOOLS list from the ToolRegistry class-based system.
 
+    Each tool in tools/*.py declares its own schema via Tool.parameters.
+    This replaces the previous 900-line hardcoded TOOLS list, ensuring
+    schemas are always in sync with implementations.
+    """
+    from orca_code.tools.base import ToolRegistry
+    from orca_code.tools.core import register_core_tools
+    from orca_code.tools.web import register_web_tools
+    from orca_code.tools.office import register_office_tools
+    from orca_code.tools.dev import register_dev_tools
+    from orca_code.tools.skills import register_skills_tools
+    from orca_code.tools.automation import register_automation_tools
+    from orca_code.tools.browser import register_browser_tools
+    from orca_code.tools.memory_tools import register_memory_tools
+    from orca_code.tools.extended import register_extended_tools
+    from orca_code.tools.tasks import register_tasks_tools
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TOOL_MAP — name → callable mapping
-# ═══════════════════════════════════════════════════════════════════════════════
+    registry = ToolRegistry()
+    register_core_tools(registry)
+    register_web_tools(registry)
+    register_office_tools(registry)
+    register_dev_tools(registry)
+    register_skills_tools(registry)
+    register_automation_tools(registry)
+    register_browser_tools(registry)
+    register_memory_tools(registry)
+    register_extended_tools(registry)
+    register_tasks_tools(registry)
+    return registry.to_openai_schemas()
 
 TOOL_MAP: dict[str, Any] = {
     # Core
@@ -919,6 +172,7 @@ TOOL_MAP: dict[str, Any] = {
     "web_fetch": web_fetch, "read_webpage": read_webpage,
     "get_weather": get_weather, "get_location": get_location,
     "web_search": web_search,
+    "tavily_extract": tavily_extract, "tavily_crawl": tavily_crawl, "tavily_map": tavily_map,
     # Dev
     "git_status": git_status, "git_diff": git_diff,
     "git_log": git_log, "git_blame": git_blame,
@@ -951,30 +205,29 @@ TOOL_MAP: dict[str, Any] = {
     "coordinator_parallel": coordinator_parallel,
     "coordinator_pipeline": coordinator_pipeline,
     "coordinator_judge": coordinator_judge,
+    # Memory & Profile
+    "recall_conversation": recall_conversation,
+    "update_profile": update_profile,
     # LSP
     "lsp_diagnostics": lsp_diagnostics,
     "lsp_references": lsp_references,
     "lsp_definition": lsp_definition,
 }
 
-# ── Lazy resolution markers (resolved on first call by run_tool) ─────────────
-# These functions live in main.py which imports from tool_registry — avoid
-# circular import by deferring resolution to call time.
-_LAZY_TOOLS: dict[str, tuple] = {
-    "recall_conversation": ("orca_code.main", "recall_conversation"),
-    "update_profile": ("orca_code.main", "update_profile"),
-}
-
-
-def _resolve(name: str):
-    """Return the callable for a tool name, resolving lazy markers if needed."""
-    if name in _LAZY_TOOLS and name not in TOOL_MAP:
-        module_path, func_name = _LAZY_TOOLS[name]
-        from importlib import import_module
-        mod = import_module(module_path)
-        TOOL_MAP[name] = getattr(mod, func_name)
-    return TOOL_MAP.get(name)
-
+# Build TOOLS schema from class registry, then add extra entries from TOOL_MAP
+# that aren't yet in the class-based system.
+TOOLS: list[dict[str, Any]] = _build_tools_schema()
+_existing_tool_names = {t["function"]["name"] for t in TOOLS}
+for _name, _func in TOOL_MAP.items():
+    if _name not in _existing_tool_names:
+        TOOLS.append({
+            "type": "function",
+            "function": {
+                "name": _name,
+                "description": getattr(_func, "__doc__", "") or f"Tool: {_name}",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        })
 
 def run_tool(name: str, args: dict) -> str:
     """Permission-checked tool dispatch. All tool calls flow through here.
@@ -982,7 +235,7 @@ def run_tool(name: str, args: dict) -> str:
     Supports caching for expensive tools (web_search, read_webpage, etc.)
     and large-output storage via ContentStore.
     """
-    func = _resolve(name)
+    func = TOOL_MAP.get(name)
     if func is None:
         # Check MCP tools
         mcp_result = _try_mcp_tool(name, args)
@@ -1056,9 +309,11 @@ def run_tool(name: str, args: dict) -> str:
     except ImportError:
         pass
 
-    # Large output: truncate with note, don't store to file (causes agent loops)
-    if isinstance(result, str) and len(result) > 8000:
-        result = result[:8000] + f"\n\n[输出被截断: {len(result):,} 字符 → 8,000 字符]"
+    # Large output: truncate with note. read_file gets higher limit (100K)
+    # because users frequently analyze large source files.
+    _limit = 100000 if name == "read_file" else 8000
+    if isinstance(result, str) and len(result) > _limit:
+        result = result[: _limit] + f"\n\n[输出被截断: {len(result):,} 字符 → {_limit:,} 字符]"
 
     # Constitution Article IV: verification markers
     from orca_code.constitution import verification_marker
@@ -1075,19 +330,28 @@ def run_tool(name: str, args: dict) -> str:
 def _try_mcp_tool(name: str, args: dict) -> str | None:
     """Try to dispatch a tool call to an MCP server.
 
-    MCP tools are named: mcp__<server_name>__<tool_name>
+    Supports two naming formats:
+      - New: mcp__<server_name>__<tool_name>  (double underscore)
+      - Old: mcp_<server_name>_<tool_name>     (single underscore)
     """
-    if not name.startswith("mcp__"):
+    if not (name.startswith("mcp__") or name.startswith("mcp_")):
         return None
     try:
         from orca_code.mcp_client import get_mcp_registry
         registry = get_mcp_registry()
-        # Parse: mcp__server__tool
-        parts = name.split("__", 2)
-        if len(parts) < 3:
-            return f"Error: invalid MCP tool name format: {name}"
-        server_name = parts[1]
-        tool_name = parts[2]
+        if name.startswith("mcp__"):
+            parts = name.split("__", 2)
+            if len(parts) < 3:
+                return f"Error: invalid MCP tool name format: {name}"
+            server_name = parts[1]
+            tool_name = parts[2]
+        else:
+            inner = name[4:]
+            sep = inner.find("_")
+            if sep == -1:
+                return f"Error: invalid MCP tool name format: {name}"
+            server_name = inner[:sep]
+            tool_name = inner[sep + 1:]
         return registry.call_tool(server_name, tool_name, args)
     except Exception as e:
         return f"Error: MCP tool '{name}' failed: {e}"

@@ -32,20 +32,25 @@ import sys
 import uuid
 from datetime import UTC, datetime
 
+from orca_code.permissions import PermissionMode
+
 # RPC mode: default to YOLO (no interactive permission prompt over stdin/stdout).
 # The TypeScript TUI will handle permissions when the PermissionCard UI is ready.
+# Use a local override instead of mutating the global — other modules in the
+# same process should not be affected.
 import orca_code.config as _cfg
+
+_RPC_PERMISSION_MODE = PermissionMode.YOLO  # scoped to this RPC instance only
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Core imports (same as server.py)
 # ═══════════════════════════════════════════════════════════════════════════════
 from orca_code.config import BASE_URL, MODEL
-from orca_code.permissions import PermissionMode
 from orca_code.session import build_system_prompt
 from orca_code.session_stream import call_model, execute_tool_calls
 from orca_code.tool_registry import TOOLS
 
-_cfg.PERMISSION_MODE = PermissionMode.YOLO
+_cfg.PERMISSION_MODE = _RPC_PERMISSION_MODE  # YOLO — no interactive prompts over stdio RPC
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Session store (same as server.py)

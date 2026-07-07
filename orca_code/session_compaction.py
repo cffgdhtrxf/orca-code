@@ -1,14 +1,11 @@
 """orca_code.session_compaction — Context window compaction (P1-7).
 
-Inspired by omp's compaction system (packages/agent/src/compaction/).
-Auto-triggers when token count exceeds threshold. Summarizes early turns
-and injects summary as a system message.
+Primary: headroom-ai (SmartCrusher, CodeCompressor, LogCompressor, etc.)
+Fallback: rule-based turn truncation.
 
-Strategy:
-  - When total tokens > CONTEXT_MAX_TOKENS * 0.7, trigger compaction
-  - Keep last KEEP_ROUNDS turns fully intact
-  - Summarize older turns into a structured summary
-  - Inject summary as a synthetic system message after the real system prompt
+When headroom is installed (pip install -e .[compression]), compaction uses
+headroom's 6-algorithm pipeline. When not installed, falls back to the
+original rule-based strategy.
 """
 
 from __future__ import annotations
@@ -16,29 +13,89 @@ from __future__ import annotations
 from orca_code.config import CONTEXT_MAX_TOKENS, KEEP_ROUNDS
 from orca_code.session_messages import _msg_tokens
 
+# ─── Headroom (optional — auto-installed if AUTO_INSTALL_DEPS is true) ──────
+# headroom-ai 提供 6 种上下文压缩算法，安装后可节省 60-95% token。
+# 自动安装：设置 config.json 中 auto_install_deps: true，首次使用时自动 pip install。
+# 手动安装：pip install -e ".[compression]"
+try:
+    from headroom import compress as _headroom_compress
+    from headroom import CompressConfig as _HeadroomConfig
+    HAS_HEADROOM = True
+except ImportError:
+    from orca_code.config import AUTO_INSTALL_DEPS
+    if AUTO_INSTALL_DEPS:
+        from orca_code.infrastructure.helpers import ensure_pkg
+        if ensure_pkg("headroom-ai", "headroom"):
+            try:
+                from headroom import compress as _headroom_compress
+                from headroom import CompressConfig as _HeadroomConfig
+                HAS_HEADROOM = True
+            except ImportError:
+                HAS_HEADROOM = False
+        else:
+            HAS_HEADROOM = False
+    else:
+        HAS_HEADROOM = False
+    if not HAS_HEADROOM:
+        _headroom_compress = None
+        _HeadroomConfig = None  # type: ignore
+
 
 def estimate_total_tokens(messages: list[dict]) -> int:
-    """Estimate total token count for a message list."""
     return sum(_msg_tokens(m) for m in messages)
 
 
 def compact_messages(messages: list[dict]) -> list[dict]:
-    """Compress conversation history to fit within token budget.
-
-    Keeps the system prompt, recent KEEP_ROUNDS turns intact,
-    and replaces older turns with a terse summary.
-
-    Returns a new list — does not modify the original.
-    """
     if len(messages) <= 2:
-        return list(messages)  # nothing to compact
+        return list(messages)
 
     total = estimate_total_tokens(messages)
     if total < CONTEXT_MAX_TOKENS * 0.7:
-        return list(messages)  # under threshold, no compaction needed
+        return list(messages)
 
-    # Build turn structure: each turn = user → assistant → [tool results ...]
-    # System message is always message[0] and is preserved.
+    if HAS_HEADROOM:
+        result = _headroom_compact(messages)
+        if result is not None:
+            return result
+
+    return _legacy_compact(messages)
+
+
+def _headroom_compact(messages: list[dict]) -> list[dict] | None:
+    from orca_code.config import (
+        COMPRESS_MODEL, COMPRESS_USER_MSGS, COMPRESS_SYSTEM_MSGS,
+        COMPRESS_PROTECT_RECENT, COMPRESS_TARGET_RATIO, MODEL, CONTEXT_MAX_TOKENS,
+        console,
+    )
+    # Suppress headroom's own warnings about missing optional deps (transformers etc.)
+    # since we handle the fallback gracefully ourselves.
+    import logging as _logging
+    _logging.getLogger("headroom").setLevel(_logging.ERROR)
+    try:
+        model = COMPRESS_MODEL or MODEL
+        config = _HeadroomConfig(
+            compress_user_messages=COMPRESS_USER_MSGS,
+            compress_system_messages=COMPRESS_SYSTEM_MSGS,
+            protect_recent=COMPRESS_PROTECT_RECENT,
+            target_ratio=COMPRESS_TARGET_RATIO,
+        )
+        result = _headroom_compress(
+            messages, model=model, model_limit=CONTEXT_MAX_TOKENS, config=config,
+        )
+        if result.compression_ratio > 0:
+            applied = result.transforms_applied[:3] if result.transforms_applied else []
+            tag = f" [{', '.join(applied)}]" if applied else ""
+            console.print(
+                f"[dim]Headroom: {result.tokens_before:,} → {result.tokens_after:,} tokens "
+                f"({result.compression_ratio:.0%} reduction){tag}[/dim]"
+            )
+        return result.messages
+    except Exception as e:
+        console.print(f"[yellow]Headroom compression failed: {e}, using fallback[/yellow]")
+        return None
+
+
+def _legacy_compact(messages: list[dict]) -> list[dict]:
     system_msg = messages[0]
     turns: list[list[dict]] = []
     current_turn: list[dict] = []
@@ -56,14 +113,10 @@ def compact_messages(messages: list[dict]) -> list[dict]:
     if len(turns) <= KEEP_ROUNDS:
         return list(messages)
 
-    # Keep last KEEP_ROUNDS turns intact
     keep_turns = turns[-KEEP_ROUNDS:]
     summarize_turns = turns[:-KEEP_ROUNDS]
-
-    # Build summary from older turns
     summary = _build_summary(summarize_turns)
 
-    # Reconstruct: system → summary → ...kept turns
     compacted: list[dict] = [system_msg]
     compacted.append({
         "role": "system",
@@ -71,16 +124,10 @@ def compact_messages(messages: list[dict]) -> list[dict]:
     })
     for turn in keep_turns:
         compacted.extend(turn)
-
     return compacted
 
 
 def _build_summary(turns: list[list[dict]]) -> str:
-    """Build a structured summary from older conversation turns.
-
-    Extracts: user questions, tool calls made, key outputs,
-    file modifications, decisions reached.
-    """
     summary_parts: list[str] = []
     tool_calls_summary: list[str] = []
     file_modifications: list[str] = []
@@ -107,15 +154,10 @@ def _build_summary(turns: list[list[dict]]) -> str:
                     key_findings.append(f"  发现: {content[:150]}...")
 
             elif role == "tool":
-                tc_id = m.get("tool_call_id", "")
                 result_preview = content[:100] if content else "(empty)"
-                if "Error" in result_preview or "错误" in result_preview:
-                    result_preview = f"ERROR: {result_preview}"
-                # Track file modifications
                 if "wrote" in content.lower() or "written" in content.lower():
                     file_modifications.append(f"  修改: {result_preview}")
 
-    # Assemble summary
     if user_questions:
         summary_parts.append("用户问题:\n" + "\n".join(user_questions[-10:]))
     if tool_calls_summary:
@@ -127,12 +169,10 @@ def _build_summary(turns: list[list[dict]]) -> str:
 
     if not summary_parts:
         return f"之前的 {len(turns)} 轮对话。细节已省略。"
-
     return "\n\n".join(summary_parts)
 
 
 def maybe_compact(messages: list[dict]) -> list[dict]:
-    """Check token usage and compact if needed. Returns (possibly) compacted list."""
     total = estimate_total_tokens(messages)
     if total > CONTEXT_MAX_TOKENS * 0.7:
         from orca_code.config import console

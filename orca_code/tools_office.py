@@ -11,15 +11,32 @@ from orca_code.utils import _validate_write_path
 
 """orca_code.tools_office — Excel, Word, screenshot, OCR."""
 
+_PKG_ERRORS: dict[str, str] = {}
+
+
+def _ensure_pkg(pip_name: str, import_name: str = None, display: str = None) -> str | None:
+    key = pip_name
+    if key in _PKG_ERRORS:
+        return _PKG_ERRORS[key]
+    try:
+        __import__(import_name or pip_name)
+        _PKG_ERRORS[key] = None
+        return None
+    except ImportError:
+        if ensure_pkg(pip_name, import_name or pip_name):
+            _PKG_ERRORS[key] = None
+            return None
+        name = display or pip_name
+        err = f"错误: 缺少 {name} (pip install {pip_name})"
+        _PKG_ERRORS[key] = err
+        return err
+
 
 def read_excel(path: str, sheet_name: str = None) -> str:
-    try:
-        import openpyxl
-    except ImportError:
-        if ensure_pkg("openpyxl"):
-            import openpyxl
-        else:
-            return "错误: 缺少 openpyxl (pip install openpyxl)"
+    err = _ensure_pkg("openpyxl")
+    if err:
+        return err
+    import openpyxl
     try:
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
@@ -38,13 +55,10 @@ def read_excel(path: str, sheet_name: str = None) -> str:
     except Exception as e:
         return f"错误: {e}"
 def write_excel(path: str, data: str, sheet_name: str = "Sheet1") -> str:
-    try:
-        import openpyxl
-    except ImportError:
-        if ensure_pkg("openpyxl"):
-            import openpyxl
-        else:
-            return "错误: 缺少 openpyxl (pip install openpyxl)"
+    err = _ensure_pkg("openpyxl")
+    if err:
+        return err
+    import openpyxl
     try:
         parsed = json.loads(data)
     except json.JSONDecodeError as e:
@@ -73,13 +87,10 @@ def write_excel(path: str, data: str, sheet_name: str = "Sheet1") -> str:
         logging.error(f"write_excel error: {e}")
         return f"错误: {e}"
 def read_word(path: str) -> str:
-    try:
-        from docx import Document
-    except ImportError:
-        if ensure_pkg("python-docx", "docx"):
-            from docx import Document
-        else:
-            return "错误: 缺少 python-docx (pip install python-docx)"
+    err = _ensure_pkg("python-docx", "docx", "python-docx")
+    if err:
+        return err
+    from docx import Document
     try:
         doc = Document(path)
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
@@ -90,13 +101,10 @@ def read_word(path: str) -> str:
     except Exception as e:
         return f"错误: {e}"
 def write_word(path: str, content: str, title: str = None) -> str:
-    try:
-        from docx import Document
-    except ImportError:
-        if ensure_pkg("python-docx", "docx"):
-            from docx import Document
-        else:
-            return "错误: 缺少 python-docx (pip install python-docx)"
+    err = _ensure_pkg("python-docx", "docx", "python-docx")
+    if err:
+        return err
+    from docx import Document
     p, error = _validate_write_path(path)
     if error:
         return error
@@ -113,13 +121,10 @@ def write_word(path: str, content: str, title: str = None) -> str:
         logging.error(f"write_word error: {e}")
         return f"错误: {e}"
 def take_screenshot(window_title: str = None, save_path: str = None) -> str:
-    try:
-        from PIL import Image, ImageGrab
-    except ImportError:
-        if ensure_pkg("Pillow", "PIL"):
-            from PIL import Image
-        else:
-            return "错误: 缺少 Pillow (pip install Pillow)"
+    err = _ensure_pkg("Pillow", "PIL", "Pillow")
+    if err:
+        return err
+    from PIL import Image, ImageGrab
 
     # Force all screenshots into output/ — don't let model scatter files across Desktop
     if save_path:
@@ -200,24 +205,17 @@ def take_screenshot(window_title: str = None, save_path: str = None) -> str:
             return f"错误: 窗口截图失败 - {e}，尝试全屏截图..."
 
     # [C10] Use mss for faster fullscreen screenshots
+    err = _ensure_pkg("mss")
+    if err:
+        return err
+    import mss
     try:
-        import mss
         save_to.parent.mkdir(parents=True, exist_ok=True)
         with mss.mss() as sct:
             monitor = sct.monitors[1]
             img = sct.grab(monitor)
             mss.tools.to_png(img.rgb, img.size, output=str(save_to))
         return f"全屏截图已保存: {save_to} ({monitor['width']}x{monitor['height']})"
-    except ImportError:
-        if ensure_pkg("mss"):
-            import mss
-            save_to.parent.mkdir(parents=True, exist_ok=True)
-            with mss.mss() as sct:
-                monitor = sct.monitors[1]
-                img = sct.grab(monitor)
-                mss.tools.to_png(img.rgb, img.size, output=str(save_to))
-            return f"全屏截图已保存: {save_to} ({monitor['width']}x{monitor['height']})"
-        return "错误: 缺少 mss (pip install mss)"
     except Exception as e:
         logging.error(f"截图失败: {e}")
         return f"错误: 截图失败 - {e}"
@@ -229,13 +227,10 @@ def ocr_image(path: str) -> str:
         if _ocr_engine is None:
             with _ocr_lock:
                 if _ocr_engine is None:
-                    try:
-                        from rapidocr_onnxruntime import RapidOCR
-                    except ImportError:
-                        if ensure_pkg("rapidocr-onnxruntime", "rapidocr_onnxruntime"):
-                            from rapidocr_onnxruntime import RapidOCR
-                        else:
-                            return "错误: 缺少 rapidocr-onnxruntime"
+                    err = _ensure_pkg("rapidocr-onnxruntime", "rapidocr_onnxruntime", "rapidocr-onnxruntime")
+                    if err:
+                        return err
+                    from rapidocr_onnxruntime import RapidOCR
                     _ocr_engine = RapidOCR()
         p = Path(path)
         if not p.exists():

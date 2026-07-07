@@ -39,14 +39,23 @@
   "tavily_api_key": "",
   "user_city": "",
 
+  "// ======== 上下文压缩 (Headroom) ========": "",
+  "// compress_config: 启用 headroom-ai 智能上下文压缩（需 pip install -e .[compression]）": "",
+  "compress_config": {
+    "compress_user_messages": false,
+    "compress_system_messages": true,
+    "protect_recent": 4,
+    "target_ratio": null
+  },
+
   "// ======== 个性化 ========": "",
   "persona": "",
   "preferred_shell": "",
   "auto_install_deps": true,
 
   "// ======== 权限控制 ========": "",
-  "// permission_mode: \"read-only\" 仅允许读取 | \"auto\" 首次询问后记住(默认) | \"yolo\" 全部自动放行": "",
-  "permission_mode": "auto",
+  "// permission_mode: \"yolo\" 全部自动放行(默认) | \"read-only\" 仅允许读取 | \"auto\" 首次询问后记住": "",
+  "permission_mode": "yolo",
   "// permission_rules: 按工具名覆盖权限 — \"allow\"(始终允许) | \"deny\"(始终拒绝) | \"ask\"(每次询问)": "",
   "permission_rules": {}
 }
