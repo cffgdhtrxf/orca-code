@@ -61,6 +61,7 @@ copy /Y "%SRC%\AGENTS.md" "AGENTS.md" >nul 2>&1
 copy /Y "%SRC%\README.md" "README.md" >nul 2>&1
 copy /Y "%SRC%\VERSION" "VERSION" >nul 2>&1
 copy /Y "%SRC%\UPDATE_VERIFIED.txt" "UPDATE_VERIFIED.txt" >nul 2>&1
+copy /Y "%SRC%\UPDATE_TEST.txt" "UPDATE_TEST.txt" >nul 2>&1
 copy /Y "%SRC%\update.bat" "update.bat" >nul 2>&1
 
 :: Clean up temp files
