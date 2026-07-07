@@ -19,8 +19,23 @@ if %errorlevel% neq 0 (
 git --version 2>&1 | findstr /i "git" >nul
 echo   OK
 
-:: Step 2: Fetch remote
-echo [2/3] Fetching remote...
+:: Step 2: Check git repo
+echo [2/3] Checking repository...
+if not exist ".git" (
+    echo.
+    echo   This looks like a ZIP download (no .git folder found).
+    echo   To enable updates, clone the repo instead:
+    echo     git clone https://github.com/cffgdhtrxf/orca-code.git
+    echo.
+    echo   Or download the latest ZIP from:
+    echo     https://github.com/cffgdhtrxf/orca-code/archive/main.zip
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Fetch remote
+echo   Fetching updates...
 git fetch origin --quiet
 if %errorlevel% neq 0 (
     echo ERROR: Cannot connect to GitHub. Check your network/proxy.
