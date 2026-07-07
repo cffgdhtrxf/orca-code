@@ -45,24 +45,8 @@ if exist "%SRC%\VERSION" (
 :: Copy: orca_code\ (core package), start.bat, config.example.json, pyproject.toml, etc.
 echo   Applying update...
 echo.
-xcopy /E /Y /Q "%SRC%\orca_code" "orca_code\" >nul 2>&1
-xcopy /E /Y /Q "%SRC%\skills" "skills\" >nul 2>&1
-xcopy /E /Y /Q "%SRC%\agents" "agents\" >nul 2>&1
-xcopy /E /Y /Q "%SRC%\docs" "docs\" >nul 2>&1
-copy /Y "%SRC%\orca_code.py" "orca_code.py" >nul 2>&1
-copy /Y "%SRC%\start.bat" "start.bat" >nul 2>&1
-copy /Y "%SRC%\start.sh" "start.sh" >nul 2>&1
-copy /Y "%SRC%\start_all.bat" "start_all.bat" >nul 2>&1
-copy /Y "%SRC%\start_local.bat" "start_local.bat" >nul 2>&1
-copy /Y "%SRC%\config.example.json" "config.example.json" >nul 2>&1
-copy /Y "%SRC%\pyproject.toml" "pyproject.toml" >nul 2>&1
-copy /Y "%SRC%\requirements.txt" "requirements.txt" >nul 2>&1
-copy /Y "%SRC%\AGENTS.md" "AGENTS.md" >nul 2>&1
-copy /Y "%SRC%\README.md" "README.md" >nul 2>&1
-copy /Y "%SRC%\VERSION" "VERSION" >nul 2>&1
-copy /Y "%SRC%\UPDATE_VERIFIED.txt" "UPDATE_VERIFIED.txt" >nul 2>&1
-copy /Y "%SRC%\UPDATE_TEST.txt" "UPDATE_TEST.txt" >nul 2>&1
-copy /Y "%SRC%\update.bat" "update.bat" >nul 2>&1
+:: robocopy: copy all files and dirs except user data (config, db, venv, etc.)
+robocopy "%SRC%" "." /E /NDL /NFL /NJH /NJS /XF "config.json" "*.db" "*.db-shm" "*.db-wal" /XD ".git" ".venv" "save" "memory" "__pycache__" ".pytest_cache" ".ruff_cache" ".cache" "target" 2>nul
 
 :: Clean up temp files
 del "%TEMP_ZIP%" >nul 2>&1
