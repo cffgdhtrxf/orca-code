@@ -1,33 +1,50 @@
-# Orca Code Installation Guide
+# Orca Code 安装指南
 
-## Requirements
+## 系统要求
 
-- Windows 10/11 (primary) or Linux/macOS
+- Windows 10/11
 - Python 3.11+
-- Git (optional, for development)
+- 网络连接（首次安装依赖需要）
 
-## Quick Start
+## 安装
+
+### 方式 1：ZIP 下载（推荐，不需要 Git）
+
+1. 打开 [GitHub 仓库](https://github.com/cffgdhtrxf/orca-code)
+2. 点击绿色 `Code` 按钮 → `Download ZIP`
+3. 解压到任意目录
+4. 双击 `start.bat` — 自动完成：创建虚拟环境 → 安装依赖 → 创建配置 → 启动
+5. 首次启动会提示输入 DeepSeek API 密钥
+
+### 方式 2：Git Clone
 
 ```bash
-# 1. Clone
-git clone <repo-url> && cd orca_code
-
-# 2. Install (creates orca-code entry point)
-pip install -e .
-
-# 3. Optional: install extra features
-pip install -e ".[gui,browser,office]"
-
-# 4. Configure
-cp config.example.json config.json
-# Edit config.json → set api_key
-
-# 5. Run
-orca-code
-# or: python orca_code.py
+git clone https://github.com/cffgdhtrxf/orca-code.git
+cd orca-code
+python -m venv .venv
+.venv\Scripts\pip install -e .
+python orca_code.py
 ```
 
-## Configuration
+### 更新
+
+双击 `update.bat` 自动从 GitHub 拉取最新版本。
+- 不需要安装 Git
+- 使用 Windows 内置 PowerShell 下载和解压
+- 保留 `config.json`、`.venv`、`memory/`、`save/` 等个人数据
+
+### 可选依赖
+
+```bash
+# 安装全部功能（含浏览器自动化、GUI 自动化、Office 支持）
+.venv\Scripts\pip install -e ".[all]"
+
+# 安装 headroom 上下文压缩（节省 60-95% token）
+.venv\Scripts\pip install -e ".[compression]"
+# 或在 config.json 中设置 auto_install_deps: true 自动安装
+```
+
+## 配置
 
 Edit `config.json`:
 

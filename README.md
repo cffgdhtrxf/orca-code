@@ -1,53 +1,61 @@
-# 🐋 Orca Code v5.3
+# Orca Code
 
-**桌面 AI 编程助手 — 61 工具 · 30 API 端点 · 94 TUI 命令 · 单进程架构**
-
-融合 Claude Code 权限模型 + omp 单进程架构 + Cursor 不可变输入模式。
+**桌面 AI 编程助手 — 66 工具 · 生命周期工作流 · 上下文压缩 · 3 层安全**
 
 ---
 
 ## 快速开始
 
+### 方式 1: 下载 ZIP 运行
+1. 从 [GitHub](https://github.com/cffgdhtrxf/orca-code) 下载 ZIP
+2. 解压到任意目录
+3. 双击 `start.bat`（自动创建虚拟环境 + 安装依赖 + 启动）
+4. 首次运行会提示输入 API 密钥
+
+### 方式 2: Git Clone 运行
 ```bash
-# 方式 1 (推荐): 单命令启动
-cd orca-ts && bun run dev
-
-# 方式 2: Windows 双击
-双击 start.bat
-
-# 方式 3: Python CLI 模式
-python orca_code.py --simple
+git clone https://github.com/cffgdhtrxf/orca-code.git
+cd orca-code
+python -m venv .venv
+.venv\Scripts\pip install -e .
+python orca_code.py
 ```
 
-首次运行会自动检测依赖并安装。TypeScript 自动启动 Python 子进程，无需手动管理。
+### 更新
+双击 `update.bat` 自动从 GitHub 拉取最新版本（无需 Git，使用 PowerShell）。
 
 ---
 
 ## 架构
 
 ```
-┌──────────────────────────────────────┐
-│  bun run dev (单命令)                 │
-│                                      │
-│  TypeScript TUI (主进程)              │
-│  │ Ink+React · Cursor · 94 命令      │
-│  │ stdin/stdout JSON-RPC             │
-│  ▼                                   │
-│  Python 子进程                        │
-│  │ LLM · 61 工具 · 会话 · MCP        │
-│  └───────────────────────────────────│
-│  无需 WebSocket · 无需端口 · 零配置    │
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  Python CLI (orca_code.py)               │
+│  │                                       │
+│  │  main.py         主循环               │
+│  │  session_*.py    会话管理 + 压缩       │
+│  │  tools/          66 工具              │
+│  │  security.py     3 层安全             │
+│  │  slash_commands  19+8 命令            │
+│  │  session_prompt  动态系统提示词        │
+│  │  constitution.py  宪法(5+1 条)        │
+│  └──────────────────────────────────────│
+│  纯 Python · 单进程 · 零外部依赖         │
+└──────────────────────────────────────────┘
 ```
 
-### 模块地图
+## 特性
 
-```
-orca-ts/src/                     ← TypeScript 前端
-├── app.tsx         主 TUI (FullscreenLayout + Cursor)
-├── useChat.ts      RPC 流式钩子
-├── commands.ts     94 斜杠命令
-├── Cursor.ts       不可变光标类
+| 特性 | 说明 |
+|------|------|
+| 工具数量 | 66 个（自动生成 Schema） |
+| 安全模型 | 3 层：安全网 → 静态扫描(AST+regex) → 子进程沙箱 |
+| 生命周期工作流 | DEFINE→PLAN→BUILD→VERIFY→REVIEW→SHIP（23 个 SKILL.md） |
+| 上下文压缩 | 可选 headroom-ai（6 算法），自动降级规则摘要 |
+| 命令 | 19 个内置 + 8 个生命周期 slash 命令 |
+| 系统提示词 | Constitution + 技能清单 + AGENTS.md 自动注入 |
+| 持久化 | 3 层：chat_history.json → session.jsonl → FTS5 记忆 |
+| 开箱即用 | 明文密钥可接受 + 自动安装依赖 + 零环境变量 |
 ├── rpc-client.ts   Python 子进程管理器
 └── components/     7 组件 (ToolCard/Diff/Markdown/...)
 
