@@ -350,12 +350,15 @@ def main():
                 _cfg.CONFIG_JSON.write_text(
                     json.dumps(CONFIG, indent=2, ensure_ascii=False), encoding="utf-8")
                 console.print("[green]密钥已保存到 config.json。正在初始化...[/green]")
-                # Reload client
+                # Reload client (must update API_KEY too — it's a copy from import time)
+                _cfg.API_KEY = key
                 _cfg._client = None
-                _client = _cfg._get_client()
-                if _client is None:
+                _new_client = _cfg._get_client()
+                if _new_client is None:
                     console.print("[red]密钥无效，请检查后重试。[/red]")
                     return
+                # Update local and module-level client references
+                globals()["client"] = _new_client
             else:
                 console.print("[red]密钥无效，跳过。可稍后在 config.json 中配置。[/red]")
                 return
