@@ -22,34 +22,12 @@ echo   OK
 
 set TEMP_ZIP=%TEMP%\orca-update.zip
 set TEMP_DIR=%TEMP%\orca-update
-set PS_SCRIPT=%TEMP%\orca-update.ps1
 
 echo [2/2] Downloading latest version from GitHub...
+echo   URL: https://github.com/cffgdhtrxf/orca-code/archive/main.zip
 
-:: Write PowerShell script to temp file to avoid multi-line quoting issues
-> "%PS_SCRIPT%" (
-    echo [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    echo try {
-    echo     Write-Host '   Downloading...'
-    echo     $wc = New-Object System.Net.WebClient
-    echo     $wc.DownloadFile('https://github.com/cffgdhtrxf/orca-code/archive/main.zip', '%TEMP_ZIP%')
-    echo     Write-Host '   Extracting...'
-    echo     if (Test-Path '%TEMP_DIR%') { Remove-Item '%TEMP_DIR%' -Recurse -Force }
-    echo     Expand-Archive '%TEMP_ZIP%' -DestinationPath '%TEMP_DIR%'
-    echo     Write-Host '   SUCCESS'
-    echo     exit 0
-    echo } catch {
-    echo     Write-Host '   FAILED: ' + $_.Exception.Message
-    echo     exit 1
-    echo }
-)
-
-powershell -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
-set PS_EXIT=%errorlevel%
-
-del "%PS_SCRIPT%" >nul 2>&1
-
-if %PS_EXIT% neq 0 (
+powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { Write-Host '   Downloading...'; (New-Object System.Net.WebClient).DownloadFile('https://github.com/cffgdhtrxf/orca-code/archive/main.zip', '%TEMP_ZIP%'); Write-Host '   Extracting...'; if (Test-Path '%TEMP_DIR%') { Remove-Item '%TEMP_DIR%' -Recurse -Force }; Expand-Archive '%TEMP_ZIP%' -DestinationPath '%TEMP_DIR%'; Write-Host '   SUCCESS'; exit 0 } catch { Write-Host '   FAILED: ' + $_.Exception.Message; exit 1 }"
+if %errorlevel% neq 0 (
     echo.
     echo ERROR: Download failed. Check your network connection.
     pause
