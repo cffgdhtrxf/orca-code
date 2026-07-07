@@ -10,7 +10,7 @@ echo.
 
 if exist ".git" goto :git_update
 
-:: ── ZIP download mode (no git) ──
+::  ZIP download mode (no git) 
 echo [1/2] Checking PowerShell...
 powershell -Command "& {exit 0}" >nul 2>&1
 if %errorlevel% neq 0 (
@@ -90,7 +90,7 @@ echo   Run start.bat to launch.
 echo.
 goto :end
 
-:: ── Git mode ──
+::  Git mode 
 :git_update
 echo [1/3] Checking Git...
 where git >nul 2>&1
