@@ -195,7 +195,11 @@ def _get_client():
     global _client
     if _client is None:
         if not API_KEY:
-            return None
+            console.print("[bold red]错误: 未配置 API 密钥。请编辑 config.json 填入 api_key 后重试。[/bold red]")
+            raise RuntimeError(
+                "未配置 API 密钥。请在 config.json 中设置 api_key 字段，"
+                "或设置环境变量 ORCA_API_KEY=sk-xxx"
+            )
         import httpx as _httpx
         from openai import OpenAI
         # ── P2-56: Proxy support ─────────────────────────────────────────
@@ -203,7 +207,14 @@ def _get_client():
         _http_client = None
         if _proxy:
             _http_client = _httpx.Client(proxy=_proxy)
-        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL, http_client=_http_client)
+        try:
+            _client = OpenAI(api_key=API_KEY, base_url=BASE_URL, http_client=_http_client)
+        except Exception as e:
+            console.print(f"[bold red]错误: 无法初始化 API 客户端 — {e}[/bold red]")
+            raise RuntimeError(
+                f"API 客户端初始化失败。请检查 config.json 中的 base_url "
+                f"({BASE_URL}) 和 api_key 是否正确。错误: {e}"
+            ) from e
     return _client
 
 

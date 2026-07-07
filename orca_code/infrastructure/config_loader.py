@@ -21,7 +21,7 @@ from typing import Any
 DEFAULT_CONFIG: dict[str, Any] = {
     "api_key": "",
     "base_url": "https://api.deepseek.com",
-    "model_name": "deepseek-v4-flash",
+    "model_name": "deepseek-chat",
     "max_output_tokens": 384000,
     "enable_think_mode": True,
     "silent_cmd": True,

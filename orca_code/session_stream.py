@@ -154,6 +154,12 @@ def _write_ansi(text: str) -> None:
 
 
 def call_model(messages):
+    # Safety: verify client is initialized before making API call
+    if client is None:
+        raise RuntimeError(
+            "API 客户端未初始化。请确保 config.json 中已配置 api_key，"
+            "且 base_url 指向有效的 API 地址。"
+        )
     # Prepare messages for API
     api_messages = []
     for m in messages:
