@@ -339,7 +339,7 @@ def main():
 
     # If no API key configured, prompt user to enter one before continuing
     if client is None:
-        console.print("\n[yellow]⚠ 未检测到 API 密钥。首次使用请配置 API 密钥。[/yellow]")
+        console.print("\n[yellow][WARN] No API key detected. Please configure your API key on first use.[/yellow]")
         console.print("[dim]可直接修改 config.json 中的 api_key 字段，或输入密钥：[/dim]")
         try:
             from prompt_toolkit import PromptSession

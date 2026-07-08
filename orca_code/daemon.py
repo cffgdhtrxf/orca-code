@@ -23,7 +23,7 @@ import signal
 import sys
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -299,7 +299,7 @@ class Daemon:
             # Save consolidated summary
             mgr.set_meta("rolling_summary", summary)
             mgr.set_meta("rolling_summary_range", datetime.now().strftime("%Y-%m-%d"))
-            mgr.set_meta("last_dream", datetime.now(UTC).isoformat())
+            mgr.set_meta("last_dream", datetime.now(timezone.utc).isoformat())
 
             _log("DREAM", f"Consolidated {total} memories → summary ({len(summary)} chars)")
             mgr.close()

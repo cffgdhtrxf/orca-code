@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -166,7 +166,7 @@ def _get_or_create_session(session_id: str | None = None, mode: str = "auto") ->
         "messages": [{"role": "system", "content": build_system_prompt()}],
         "turns": 0,
         "tool_calls": 0,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "model": MODEL,
         "permission_mode": perm_mode,
         "interrupt_event": asyncio.Event(),
@@ -843,7 +843,7 @@ async def fork_session(session_id: str):
         "messages": [dict(m) for m in original["messages"]],  # deep copy
         "turns": original["turns"],
         "tool_calls": original["tool_calls"],
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "model": original["model"],
         "permission_mode": original.get("permission_mode", PermissionMode.AUTO),
         "interrupt_event": asyncio.Event(),
@@ -1040,7 +1040,7 @@ async def list_models():
 async def backup_config():
     """Export current configuration as a JSON backup file."""
     from orca_code.config import CONFIG, SAVE_DIR
-    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_path = SAVE_DIR / f"config_backup_{ts}.json"
     try:
         # Redact sensitive values in backup
@@ -1103,7 +1103,7 @@ async def merge_sessions(session_a: str, session_b: str):
         "id": new_id, "messages": merged_msgs,
         "turns": a["turns"] + b["turns"],
         "tool_calls": a["tool_calls"] + b["tool_calls"],
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "model": a["model"], "permission_mode": a.get("permission_mode"),
         "interrupt_event": asyncio.Event(), "merged_from": [session_a, session_b],
     }
@@ -1129,7 +1129,7 @@ async def trigger_auto_save():
                 "tool_calls": sess["tool_calls"],
                 "model": sess["model"],
                 "created_at": sess["created_at"],
-                "last_saved": datetime.now(UTC).isoformat(),
+                "last_saved": datetime.now(timezone.utc).isoformat(),
             })
             saved += 1
         except Exception:

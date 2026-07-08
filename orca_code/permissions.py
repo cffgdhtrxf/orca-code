@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -397,7 +397,7 @@ class PermissionAuditLog:
             args_preview = args_preview[:297] + "..."
 
         row = [
-            datetime.now(UTC).isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             tool_name,
             risk.value,
             decision,

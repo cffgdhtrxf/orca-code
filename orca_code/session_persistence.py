@@ -27,7 +27,7 @@ Usage:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from orca_code.utils import _sanitize_surrogates
@@ -58,7 +58,7 @@ class JSONLSessionStore:
         record = {
             "role": role,
             "content": _sanitize_surrogates(str(content)[:50000]),  # Cap at 50K chars
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
         }
         if tool_calls:
             record["tool_calls"] = tool_calls

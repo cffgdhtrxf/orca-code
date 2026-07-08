@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from orca_code.permissions import PermissionMode
 
@@ -66,7 +66,7 @@ def _get_or_create_session(session_id: str | None = None) -> dict:
         "id": sid,
         "messages": [{"role": "system", "content": build_system_prompt()}],
         "turns": 0, "tool_calls": 0,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "model": MODEL,
     }
     _sessions[sid] = sess

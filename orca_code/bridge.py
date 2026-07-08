@@ -39,7 +39,7 @@ import asyncio
 import json
 import secrets
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from orca_code.config import (
@@ -262,7 +262,7 @@ class BridgeHandler:
             "messages": [{"role": "system", "content": build_system_prompt()}],
             "turns": 0,
             "tool_calls": 0,
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "model": MODEL,
         }
         self._sessions[session_id] = sess

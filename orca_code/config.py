@@ -195,11 +195,8 @@ def _get_client():
     global _client
     if _client is None:
         if not API_KEY:
-            console.print("[bold red]错误: 未配置 API 密钥。请编辑 config.json 填入 api_key 后重试。[/bold red]")
-            raise RuntimeError(
-                "未配置 API 密钥。请在 config.json 中设置 api_key 字段，"
-                "或设置环境变量 ORCA_API_KEY=sk-xxx"
-            )
+            console.print("[yellow][WARN] No API key configured. Set api_key in config.json or set ORCA_API_KEY env var.[/yellow]")
+            return None
         import httpx as _httpx
         from openai import OpenAI
         # ── P2-56: Proxy support ─────────────────────────────────────────

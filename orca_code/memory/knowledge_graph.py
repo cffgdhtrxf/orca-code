@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -96,7 +96,7 @@ class KnowledgeGraph:
         metadata: dict | None = None,
     ):
         """Add or update an entity."""
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         self._db.execute(
             """INSERT OR REPLACE INTO entities (id, type, label, metadata, last_accessed_at, access_count)
                VALUES (?, ?, ?, ?, ?,
@@ -115,7 +115,7 @@ class KnowledgeGraph:
         # Update access
         self._db.execute(
             "UPDATE entities SET last_accessed_at = ?, access_count = access_count + 1 WHERE id = ?",
-            (datetime.now(UTC).isoformat(), entity_id),
+            (datetime.now(timezone.utc).isoformat(), entity_id),
         )
         self._db.commit()
         return dict(row)
