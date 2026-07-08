@@ -131,4 +131,4 @@ class DeepSeekAdapter(OpenAICompatAdapter):
         return True
 
     def get_default_model(self) -> str:
-        return "deepseek-chat"
+        return "deepseek-v4-flash"
