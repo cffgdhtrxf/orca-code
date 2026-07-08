@@ -504,12 +504,16 @@ def main():
         else:
             session.messages.append({"role": "user", "content": user_input})
         session.turns += 1
+        t0 = time.time()  # per-turn elapsed timer
         if not hasattr(session, 'recall_count'):
             session.recall_count = 0
         session.recall_count = 0
         generated_files = set()
         reasoning = ""
         answer = ""
+        turn_tool_count = 0
+        turn_cached = 0
+        turn_reasoning = 0
 
         while True:
             session.messages = sanitize_messages(session.messages)
@@ -545,7 +549,17 @@ def main():
                 session.messages.pop(); session.turns -= 1; break
 
             if usage:
-                session.add_usage(usage); show_usage(usage)
+                session.add_usage(usage)
+                # Accumulate per-turn cached & reasoning tokens
+                hit = getattr(usage, 'prompt_cache_hit_tokens', 0) or 0
+                pd = getattr(usage, 'prompt_tokens_details', None)
+                if pd and hasattr(pd, 'cached_tokens'):
+                    hit += (pd.cached_tokens or 0)
+                turn_cached += hit
+                cd = getattr(usage, 'completion_tokens_details', None)
+                if cd and hasattr(cd, 'reasoning_tokens'):
+                    turn_reasoning += (cd.reasoning_tokens or 0)
+                show_usage(usage)
             else:
                 # DeepSeek streaming doesn't include usage — estimate from messages + answer
                 est_in = sum(_msg_tokens(m) for m in session.messages[-1:])  # last user msg
@@ -556,6 +570,7 @@ def main():
 
             if tool_calls_idx:
                 tc_list, tr_list = execute_tool_calls(tool_calls_idx)
+                turn_tool_count += len(tc_list)
                 for tc in tc_list:
                     if tc['function']['name'] in ('write_file','write_excel','write_word','take_screenshot'):
                         try:
@@ -661,14 +676,21 @@ def main():
             turn_out = max(1, len(answer) // 2) if answer else 0
         bal = get_api_balance()
 
-        # Single-line turn summary
+        # Per-turn elapsed
+        turn_elapsed = f"{time.time() - t0:.1f}s"
+
+        # Single-line turn summary (new19.py style)
         from orca_code.session_ui import show_turn_summary
         show_turn_summary(
             turn=session.turns,
             input_tokens=turn_in,
             output_tokens=turn_out,
-            elapsed=session.elapsed,
+            elapsed=turn_elapsed,
             balance=bal,
+            tool_count=turn_tool_count,
+            cached_tokens=turn_cached,
+            reasoning_tokens=turn_reasoning,
+            ttl_warning=ttl_warning,
         )
 
 if __name__ == "__main__":

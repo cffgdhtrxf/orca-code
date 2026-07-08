@@ -438,17 +438,55 @@ def show_tool_progress(name: str, args: dict, status: str = "running"):
 
 def show_turn_summary(turn: int, input_tokens: int,
                       output_tokens: int, elapsed: str = "",
-                      balance: str = ""):
-    """Single-line turn summary like Claude Code / DeepCode."""
+                      balance: str = "", tool_count: int = 0,
+                      cached_tokens: int = 0,
+                      reasoning_tokens: int = 0,
+                      ttl_warning: str = ""):
+    """Single-line turn summary — rich stats like Claude Code.
+
+    Shows: turn number, tool count, input tokens (with cache hit rate),
+    output tokens (thinking vs answer breakdown), elapsed time, balance, saved status.
+    """
+    hit_rate = (cached_tokens / input_tokens * 100) if input_tokens > 0 else 0
+    answer_tokens = max(0, output_tokens - reasoning_tokens)
+
+    # Build parts list
     parts = [
-        f"[bold dim]Turn {turn}[/bold dim]",
-        f"[dim]{input_tokens:,}t in[/dim]",
-        f"[dim]{output_tokens:,}t out[/dim]",
-        f"[dim]{elapsed}[/dim]",
+        f"轮 {turn}",
+        f"工具 {tool_count}",
     ]
+
+    # Input: with cache hit details
+    if cached_tokens > 0:
+        parts.append(
+            f"输入 {input_tokens:,} [green](命中缓存 {cached_tokens:,} {hit_rate:.1f}%)[/green]"
+        )
+    else:
+        parts.append(f"输入 {input_tokens:,}")
+
+    # Output: with thinking vs answer breakdown
+    if reasoning_tokens > 0:
+        parts.append(
+            f"输出 {output_tokens:,} [yellow](思考 {reasoning_tokens:,}[/yellow] "
+            f"[cyan]回答 {answer_tokens:,})[/cyan]"
+        )
+    else:
+        parts.append(f"输出 {output_tokens:,}")
+
+    # Elapsed
+    parts.append(f"耗时 {elapsed}")
+
+    # Balance
     if balance:
-        parts.append(f"[dim]💰 {balance}[/dim]")
-    console.print("  " + "  ·  ".join(parts))
+        parts.append(f"[bold magenta]剩余 {balance}[/bold magenta]")
+
+    # Saved badge
+    parts.append("[bold green][已保存][/bold green]")
+
+    if ttl_warning:
+        parts.append(ttl_warning)
+
+    console.print("  " + " | ".join(parts))
 
 
 
