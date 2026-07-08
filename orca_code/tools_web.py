@@ -7,9 +7,9 @@ import re
 import subprocess
 import sys
 import threading
-import urllib.error
 import urllib.parse
-import urllib.request
+
+import requests
 
 from orca_code.config import (
     SCRIPT_DIR,
@@ -23,6 +23,29 @@ from orca_code.config import (
 from orca_code.security import _TEST_LOCATION_HASH, is_safe_url
 
 """orca_code.tools_web — Web fetch, search, weather, location."""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Shared HTTP Session — reuse TCP connections across all web tools (new19.py pattern)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_HTTP_SESSION = None
+_HTTP_SESSION_LOCK = threading.Lock()
+
+
+def _get_http_session() -> requests.Session:
+    """Get or create a shared requests.Session for connection reuse."""
+    global _HTTP_SESSION
+    if _HTTP_SESSION is not None:
+        return _HTTP_SESSION
+    with _HTTP_SESSION_LOCK:
+        if _HTTP_SESSION is not None:
+            return _HTTP_SESSION
+        _HTTP_SESSION = requests.Session()
+        _HTTP_SESSION.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+    return _HTTP_SESSION
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tavily SDK client (lazy init)
@@ -52,22 +75,22 @@ def web_fetch(url: str) -> str:
     if not safe:
         return f"错误: {reason}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = resp.read().decode("utf-8", errors="replace")
-            return data[:10000] if len(data) > 10000 else data
+        session = _get_http_session()
+        resp = session.get(url, timeout=15)
+        resp.encoding = "utf-8"
+        data = resp.text
+        return data[:10000] if len(data) > 10000 else data
     except Exception as e:
         return f"错误: {e}"
 def read_webpage(url: str) -> str:
     safe, reason = is_safe_url(url)
     if not safe:
         return f"错误: {reason}"
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    })
+    session = _get_http_session()
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
+        resp = session.get(url, timeout=15)
+        resp.encoding = "utf-8"
+        html = resp.text
     except Exception as e:
         return f"错误: 读取失败 - {e}"
 
@@ -242,12 +265,11 @@ def tavily_map(url: str) -> str:
     return "\n".join(parts)
 def _ddg_fallback(query: str) -> str:
     url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    })
+    session = _get_http_session()
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
+        resp = session.get(url, timeout=10)
+        resp.encoding = "utf-8"
+        html = resp.text
     except Exception as e:
         return f"错误: 搜索失败 - {e}"
     results = []
@@ -303,9 +325,10 @@ def get_weather(location: str) -> str:
             url = f"https://wttr.in/{urllib.parse.quote(location)}?lang=zh&format=2"
         else:
             url = f"https://wttr.in/{urllib.parse.quote(location)}?lang=zh"
-        req = urllib.request.Request(url, headers={"User-Agent": "curl/7.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8", errors="replace").strip()
+        session = _get_http_session()
+        resp = session.get(url, headers={"User-Agent": "curl/7.0"}, timeout=10)
+        resp.encoding = "utf-8"
+        raw = resp.text.strip()
         lines = []
         for line in raw.split("\n"):
             if any(s in line.lower() for s in ("igor_chubin", "igor@chubin", "follow @")):
