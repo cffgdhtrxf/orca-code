@@ -359,6 +359,8 @@ def main():
                     return
                 # Update local and module-level client references
                 globals()["client"] = _new_client
+                import orca_code.session_stream as _ss
+                _ss.client = _new_client
             else:
                 console.print("[red]密钥无效，跳过。可稍后在 config.json 中配置。[/red]")
                 return
