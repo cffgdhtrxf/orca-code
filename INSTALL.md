@@ -52,7 +52,7 @@ Edit `config.json`:
 {
   "api_key": "sk-your-deepseek-api-key",
   "base_url": "https://api.deepseek.com",
-  "model_name": "deepseek-chat",
+  "model_name": "deepseek-v4-flash",
   "permission_mode": "auto",
   "max_output_tokens": 8192,
   "context_max_tokens": 100000
@@ -62,7 +62,7 @@ Edit `config.json`:
 Key settings:
 - `api_key` — DeepSeek or OpenAI-compatible API key
 - `base_url` — API endpoint (default: DeepSeek)
-- `model_name` — Model ID (deepseek-chat, gpt-4o, etc.)
+- `model_name` — Model ID (deepseek-v4-flash, gpt-4o, etc.)
 - `permission_mode` — `read-only` | `auto` | `yolo`
 - `enable_gui_auto` — Enable GUI automation (requires pyautogui)
 - `enable_browser_auto` — Enable browser automation (requires playwright)
