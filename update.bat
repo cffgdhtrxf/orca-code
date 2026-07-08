@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 title Orca Code Updater
 
@@ -10,7 +9,7 @@ echo.
 
 if exist ".git" goto :git_update
 
-::  ZIP download mode (no git) — use absolute PowerShell path for systems where it's not in PATH
+::  ZIP download mode (no git) -- use absolute PowerShell path for systems where it's not in PATH
 set "PWSH=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%PWSH%" set "PWSH=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
 
