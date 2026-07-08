@@ -10,11 +10,13 @@ echo.
 
 if exist ".git" goto :git_update
 
-::  ZIP download mode (no git) 
+::  ZIP download mode (no git) — use absolute PowerShell path for systems where it's not in PATH
+set "PWSH=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PWSH%" set "PWSH=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+
 echo [1/2] Checking PowerShell...
-powershell -Command "& {exit 0}" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: PowerShell required but not found.
+if not exist "%PWSH%" (
+    echo ERROR: PowerShell required but not found at %PWSH%
     pause
     exit /b 1
 )
@@ -26,7 +28,7 @@ set TEMP_DIR=%TEMP%\orca-update
 echo [2/2] Downloading latest version from GitHub...
 echo   URL: https://github.com/cffgdhtrxf/orca-code/archive/main.zip
 
-powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { Write-Host '   Downloading...'; (New-Object System.Net.WebClient).DownloadFile('https://github.com/cffgdhtrxf/orca-code/archive/main.zip', '%TEMP_ZIP%'); Write-Host '   Extracting...'; if (Test-Path '%TEMP_DIR%') { Remove-Item '%TEMP_DIR%' -Recurse -Force }; Expand-Archive '%TEMP_ZIP%' -DestinationPath '%TEMP_DIR%'; Write-Host '   SUCCESS'; exit 0 } catch { Write-Host '   FAILED: ' + $_.Exception.Message; exit 1 }"
+"%PWSH%" -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { Write-Host '   Downloading...'; (New-Object System.Net.WebClient).DownloadFile('https://github.com/cffgdhtrxf/orca-code/archive/main.zip', '%TEMP_ZIP%'); Write-Host '   Extracting...'; if (Test-Path '%TEMP_DIR%') { Remove-Item '%TEMP_DIR%' -Recurse -Force }; Expand-Archive '%TEMP_ZIP%' -DestinationPath '%TEMP_DIR%'; Write-Host '   SUCCESS'; exit 0 } catch { Write-Host '   FAILED: ' + $_.Exception.Message; exit 1 }"
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: Download failed. Check your network connection.
