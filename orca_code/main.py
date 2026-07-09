@@ -97,6 +97,43 @@ from orca_code.tools_memory import recall_conversation, update_profile, inject_s
 _INPUT_HISTORY: list[str] = []
 _MAX_HISTORY = 200
 
+# ─── Terminal resize detection ─────────────────────────────────────────────
+# cmd.exe toggles its screen buffer on Alt+Enter (windowed ↔ fullscreen),
+# which invalidates prompt_toolkit's cached dimensions.  We poll terminal
+# size before each prompt and recreate the PromptSession when it changes.
+import time as _time
+
+_last_term_cols: int = 0
+_last_term_rows: int = 0
+_last_resize_check: float = 0.0
+_RESIZE_COOLDOWN: float = 0.2       # 200 ms debounce
+_RESIZE_THRESHOLD: int = 2           # minimum col/row change to trigger
+
+
+def _check_terminal_resize() -> bool:
+    """Poll terminal size.  Returns True when dimensions changed significantly.
+
+    Debounced (200 ms) to avoid reacting to intermediate resize states.
+    First call seeds the baseline without triggering.
+    """
+    global _last_term_cols, _last_term_rows, _last_resize_check
+    now = _time.monotonic()
+    if now - _last_resize_check < _RESIZE_COOLDOWN:
+        return False
+    _last_resize_check = now
+    try:
+        size = os.get_terminal_size()
+        cols, rows = size.columns, size.lines
+    except Exception:
+        return False
+    if _last_term_cols == 0:
+        _last_term_cols, _last_term_rows = cols, rows
+        return False
+    if abs(cols - _last_term_cols) >= _RESIZE_THRESHOLD or abs(rows - _last_term_rows) >= _RESIZE_THRESHOLD:
+        _last_term_cols, _last_term_rows = cols, rows
+        return True
+    return False
+
 # Slash commands list (used by completer and help)
 _SLASH_COMMANDS = sorted(COMMAND_HELP.keys())
 
@@ -261,21 +298,48 @@ def _get_prompt_session() -> PromptSession:
     """
     global _prompt_session
     if _prompt_session is None:
-        _prompt_session = PromptSession(
-            history=_get_file_history(),
-            auto_suggest=AutoSuggestFromHistory(),
-            completer=OrcaCompleter(),
-            style=_ORCA_PROMPT_STYLE,
-            bottom_toolbar=_get_bottom_toolbar,
-            key_bindings=_kb,
-            complete_while_typing=False,
-            reserve_space_for_menu=0,
-            enable_history_search=False,
-            multiline=True,
-            vi_mode=False,
-            prompt_continuation="  ",
-        )
+        _prompt_session = _build_prompt_session()
     return _prompt_session
+
+
+def _build_prompt_session() -> PromptSession:
+    """Build a fresh PromptSession with current terminal dimensions.
+
+    Extracted so _recreate_prompt_session can re-build after resize
+    without duplicating configuration.
+    """
+    return PromptSession(
+        history=_get_file_history(),
+        auto_suggest=AutoSuggestFromHistory(),
+        completer=OrcaCompleter(),
+        style=_ORCA_PROMPT_STYLE,
+        bottom_toolbar=_get_bottom_toolbar,
+        key_bindings=_kb,
+        complete_while_typing=False,
+        reserve_space_for_menu=0,
+        enable_history_search=False,
+        multiline=True,
+        vi_mode=False,
+        prompt_continuation="  ",
+    )
+
+
+def _recreate_prompt_session() -> None:
+    """Recreate the PromptSession after terminal resize.
+
+    cmd.exe Alt+Enter destroys/recreates the console screen buffer.
+    prompt_toolkit caches the old buffer handle internally, so we must
+    build a fresh session that queries the new buffer's dimensions.
+
+    History (FileHistory + InMemoryHistory) is preserved via singleton
+    accessors — they survive session recreation.
+    """
+    global _prompt_session
+    old = _prompt_session
+    try:
+        _prompt_session = _build_prompt_session()
+    except Exception:
+        _prompt_session = old  # restore on failure — no regression
 
 
 def get_user_input():
@@ -284,9 +348,20 @@ def get_user_input():
     Multi-line input via Ctrl+Enter (Windows Terminal) or Ctrl+J (fallback).
     Enter submits. Backslash at end of line also continues.
 
+    Detects terminal resize (cmd.exe Alt+Enter windowed ↔ fullscreen) and
+    recreates the PromptSession to pick up the new console buffer dimensions.
+
     Returns:
         User input string, None to exit, "" to skip.
     """
+    # Detect terminal resize (e.g. cmd.exe Alt+Enter toggle)
+    if _check_terminal_resize():
+        # Stabilize ANSI state machine before clearing
+        sys.stdout.write("\033[0m\033[0m\033[0m")
+        sys.stdout.flush()
+        console.clear()
+        _recreate_prompt_session()
+
     console.print()
     session = _get_prompt_session()
 

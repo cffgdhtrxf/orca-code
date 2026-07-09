@@ -4,6 +4,21 @@
 
 一个在终端里运行的 AI 编程助手。能读写文件、执行命令、搜索网页、操控 GUI、调用 LSP——全程由你控制权限。
 
+## 📂 文件导航
+
+| 你在找… | 看这里 |
+|---------|--------|
+| 🚀 **启动脚本** | `start.bat`（Windows）/ `start.sh`（Linux/macOS） |
+| 🔄 **更新脚本** | `update.bat` |
+| ⚙️ **配置文件** | `config.json`（主配置）/ `config.example.json`（模板） |
+| 📖 **安装说明** | `INSTALL.md` |
+| 📝 **许可证** | `LICENSE` |
+| 🐍 **项目入口** | `orca_code.py` |
+| 📦 **依赖清单** | `requirements.txt` / `requirements-core.txt` |
+| 📂 **源代码** | `orca_code/` 目录 |
+| 🧪 **测试** | `tests/` 目录 |
+| 🔧 **构建/诊断脚本** | `scripts/` 目录 |
+
 ---
 
 ## 快速开始

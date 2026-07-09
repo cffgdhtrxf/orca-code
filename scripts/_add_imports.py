@@ -1,7 +1,12 @@
-"""Add required imports to each extracted module."""
-import os, sys
+"""Add required imports to each extracted module.
 
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'orca_code')
+Run from the project root:  python scripts/_add_imports.py
+"""
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).parent.parent
+OUTDIR = str(ROOT / 'orca_code')
 
 MODULE_IMPORTS = {
     'utils.py': '\n'.join([

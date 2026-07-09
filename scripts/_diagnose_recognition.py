@@ -1,18 +1,22 @@
 """
 详细诊断语音识别流程
+
+Run from the project root:  python scripts/_diagnose_recognition.py
 """
-import os
+from pathlib import Path
 import numpy as np
 import sounddevice as sd
 import sherpa_onnx
 import time
+
+ROOT = Path(__file__).parent.parent
 
 print("=" * 80)
 print("语音识别详细诊断")
 print("=" * 80)
 
 # 模型路径
-model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sherpa_onnx_models")
+model_dir = str(ROOT / "sherpa_onnx_models")
 
 encoder = os.path.join(model_dir, "encoder-epoch-99-avg-1.onnx")
 decoder = os.path.join(model_dir, "decoder-epoch-99-avg-1.onnx")

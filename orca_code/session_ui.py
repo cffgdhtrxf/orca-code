@@ -28,6 +28,7 @@ from orca_code.config import (
     VISION_MODEL,
     WORKING_DIR,
     console,
+    get_term_width,
 )
 from orca_code.infrastructure.config_loader import mask_key
 from orca_code.session_messages import _get_tools
@@ -71,7 +72,7 @@ def _get_flash() -> tuple[str | None, str]:
 def print_gap() -> None:
     try:
         console.print()
-        console.print(f"[dim]{'─' * min(TERM_WIDTH, 80)}[/dim]")
+        console.print(f"[dim]{'─' * min(get_term_width(), 80)}[/dim]")
         console.print()
     except (KeyboardInterrupt, OSError):
         pass
@@ -100,9 +101,10 @@ def show_tool_result(result, tool_name=""):
             line.startswith(("+", "-", "@@")) for line in lines[:3]
         )
 
+        _tw = get_term_width()
         for line in lines[:max_show]:
-            if len(line) > TERM_WIDTH:
-                line = line[:TERM_WIDTH - 3] + "..."
+            if len(line) > _tw:
+                line = line[:_tw - 3] + "..."
 
             if _is_diff and line.startswith("+"):
                 console.print(f"[green]  | {line}[/green]")

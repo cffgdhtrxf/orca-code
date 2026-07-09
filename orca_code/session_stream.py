@@ -99,37 +99,16 @@ def get_prompt_version() -> int:
 # Terminal capability detection (F18 — ANSI style leak prevention on Windows)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+from orca_code.infrastructure.platform import TerminalInfo
+
+
 def _terminal_supports_italic() -> bool:
     """Check if the terminal supports ANSI SGR codes for italic [3m and dim [2m.
 
-    Legacy Windows terminals (cmd.exe, old PowerShell 5.x) lack italic/dim
-    support. When they encounter unsupported SGR codes, their ANSI state
-    machine corrupts — the codes are silently ignored but the state tracker
-    doesn't account for them, so subsequent \\033[0m (SGR reset) loses sync.
-    This causes the "answer text polluted as gray/dim" bug.
-
-    Modern terminals that DO support italic/dim:
-      - Windows Terminal (WT_SESSION env var)
-      - VS Code integrated terminal
-      - ConEmu / Cmder
-      - All Unix terminals (xterm, gnome-terminal, iTerm2, kitty, etc.)
+    Delegates to TerminalInfo which detects legacy Windows terminals
+    (cmd.exe, old PowerShell 5.x) that lack italic/dim support.
     """
-    if sys.platform != "win32":
-        return True
-    # Windows Terminal sets WT_SESSION
-    if os.environ.get("WT_SESSION"):
-        return True
-    # VS Code / Cursor
-    term_program = os.environ.get("TERM_PROGRAM", "").lower()
-    if term_program in ("vscode", "cursor"):
-        return True
-    # ConEmu / Cmder
-    if os.environ.get("ConEmuPID") or "ConEmu" in os.environ.get("TERM_PROGRAM", ""):
-        return True
-    # WezTerm, Alacritty, Tabby — modern GPU-accelerated terminals
-    if term_program in ("wezterm", "alacritty", "tabby", "warp"):
-        return True
-    return False
+    return TerminalInfo.supports_italic()
 
 
 # Cached on first call

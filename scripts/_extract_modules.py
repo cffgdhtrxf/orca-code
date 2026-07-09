@@ -1,8 +1,13 @@
-"""One-shot extraction: split orca_code_legacy.py into package modules."""
-import ast, sys, os
+"""One-shot extraction: split orca_code_legacy.py into package modules.
 
-LEGACY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'orca_code_legacy.py')
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'orca_code')
+Run from the project root:  python scripts/_extract_modules.py
+"""
+import ast, sys
+from pathlib import Path
+
+ROOT = Path(__file__).parent.parent
+LEGACY = str(ROOT / 'orca_code_legacy.py')
+OUTDIR = str(ROOT / 'orca_code')
 
 with open(LEGACY, 'r', encoding='utf-8') as f:
     source = f.read()

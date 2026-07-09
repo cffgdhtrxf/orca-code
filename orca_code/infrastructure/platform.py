@@ -8,6 +8,7 @@ and environment information.
 from __future__ import annotations
 
 import getpass
+import os
 import platform
 import sys
 from datetime import datetime
@@ -125,3 +126,119 @@ def get_shell() -> str:
     if sys.platform == "win32":
         return "powershell"
     return "bash"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TerminalInfo — unified terminal capability detection
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import enum as _enum
+
+
+class TerminalFamily(_enum.Enum):
+    """Broad terminal capability tier."""
+    MODERN = "modern"    # Windows Terminal, VS Code, ConEmu, WezTerm, etc.
+    LEGACY = "legacy"    # cmd.exe, PowerShell 5.x (limited ANSI/VT)
+    UNKNOWN = "unknown"
+
+
+class TerminalInfo:
+    """Unified terminal detection for platform-appropriate rendering.
+
+    Consolidates detection logic previously scattered across session_stream.py
+    and session_ui.py.  Detection rules are identical to the original
+    _terminal_supports_italic() logic.
+
+    Usage:
+        if TerminalInfo.is_legacy():
+            ... use safe rendering ...
+        cs = TerminalInfo.suggested_color_system()  # "truecolor" or "256"
+        cols, rows = TerminalInfo.get_dimensions()
+    """
+
+    _family: TerminalFamily | None = None
+
+    @classmethod
+    def _detect(cls) -> TerminalFamily:
+        """Detect terminal family once, cache result."""
+        if sys.platform != "win32":
+            return TerminalFamily.MODERN
+
+        # Windows Terminal (modern, full ANSI/VT support)
+        if os.environ.get("WT_SESSION"):
+            return TerminalFamily.MODERN
+
+        # VS Code / Cursor integrated terminal
+        term_program = os.environ.get("TERM_PROGRAM", "").lower()
+        if term_program in ("vscode", "cursor"):
+            return TerminalFamily.MODERN
+
+        # ConEmu / Cmder
+        if os.environ.get("ConEmuPID") or "ConEmu" in os.environ.get("TERM_PROGRAM", ""):
+            return TerminalFamily.MODERN
+
+        # WezTerm, Alacritty, Tabby, Warp — modern GPU-accelerated terminals
+        if term_program in ("wezterm", "alacritty", "tabby", "warp"):
+            return TerminalFamily.MODERN
+
+        # Everything else on Windows: cmd.exe, PowerShell 5.x, etc.
+        return TerminalFamily.LEGACY
+
+    @classmethod
+    def family(cls) -> TerminalFamily:
+        """Get the detected terminal family (cached)."""
+        if cls._family is None:
+            cls._family = cls._detect()
+        return cls._family
+
+    @classmethod
+    def is_legacy(cls) -> bool:
+        """True on cmd.exe, old PowerShell 5.x — limited ANSI/VT support."""
+        return cls.family() == TerminalFamily.LEGACY
+
+    @classmethod
+    def is_modern(cls) -> bool:
+        """True on Windows Terminal, VS Code, ConEmu, WezTerm, Unix terminals."""
+        return cls.family() == TerminalFamily.MODERN
+
+    @classmethod
+    def supports_italic(cls) -> bool:
+        """True if the terminal supports ANSI SGR italic [3m and dim [2m.
+
+        Legacy Windows terminals (cmd.exe, old PowerShell 5.x) lack italic/dim
+        support. When they encounter unsupported SGR codes, their ANSI state
+        machine corrupts — the codes are silently ignored but the state tracker
+        doesn't account for them, so subsequent \\033[0m loses sync.
+        """
+        return cls.is_modern()
+
+    @classmethod
+    def suggested_color_system(cls) -> str:
+        """Return the recommended Rich color_system for this terminal.
+
+        Legacy terminals (cmd.exe) get "256" (8-bit color) to avoid truecolor
+        ANSI codes that can desync their VT parser.  Modern terminals get
+        "truecolor" for full 24-bit color fidelity.
+        """
+        return "truecolor" if cls.is_modern() else "256"
+
+    @classmethod
+    def get_dimensions(cls) -> tuple[int, int]:
+        """Get current terminal (columns, rows).  Safe wrapper.
+
+        Returns (80, 24) on any error — a reasonable fallback.
+        """
+        try:
+            size = os.get_terminal_size()
+            return (size.columns, size.lines)
+        except Exception:
+            return (80, 24)
+
+    @classmethod
+    def invalidate(cls) -> None:
+        """Clear the cached terminal family so next family() re-detects.
+
+        Useful after the terminal emulator changes (e.g. user switches from
+        cmd.exe to Windows Terminal mid-session — rare, but supported).
+        """
+        cls._family = None

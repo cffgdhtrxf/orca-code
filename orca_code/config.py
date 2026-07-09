@@ -20,9 +20,13 @@ from orca_code.infrastructure.config_loader import (
     load_config,
 )
 
-# Force ANSI truecolor mode so emoji and gradient colors work on Windows.
-# Legacy Win32 console API is limited to the system code page (e.g. GBK).
-console = Console(force_terminal=True, color_system="truecolor")
+# Terminal-aware Console: use truecolor on modern terminals, 256-color on
+# legacy cmd.exe to avoid ANSI state machine corruption from 24-bit codes.
+from orca_code.infrastructure.platform import TerminalInfo  # noqa: E402
+console = Console(
+    force_terminal=True,
+    color_system=TerminalInfo.suggested_color_system(),
+)
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent.parent.resolve()
@@ -101,11 +105,29 @@ COMPRESS_PROTECT_RECENT: int = int(COMPRESS_CONFIG.get("protect_recent", 4))
 COMPRESS_TARGET_RATIO: float | None = COMPRESS_CONFIG.get("target_ratio", None)
 COMPRESS_MODEL: str | None = COMPRESS_CONFIG.get("compress_model", None)
 
-# Terminal width
+# Terminal width — queried dynamically so it stays correct after resize.
+# 80-column fallback when the OS can't report terminal size.
+_TERM_WIDTH_FALLBACK: int = 80
+
 try:
-    TERM_WIDTH = os.get_terminal_size().columns
+    _TERM_WIDTH_INIT = os.get_terminal_size().columns
 except Exception:
-    TERM_WIDTH = 80
+    _TERM_WIDTH_INIT = _TERM_WIDTH_FALLBACK
+
+# Static snapshot kept for backward compat (used only at startup by show_welcome).
+TERM_WIDTH: int = _TERM_WIDTH_INIT
+
+
+def get_term_width() -> int:
+    """Query terminal width dynamically. Safe to call at any time.
+
+    Unlike the static TERM_WIDTH constant (captured at import time), this
+    re-queries the OS on every call, so it stays correct after terminal resize.
+    """
+    try:
+        return os.get_terminal_size().columns
+    except Exception:
+        return _TERM_WIDTH_FALLBACK
 
 # ─── Plaintext API key warning (non-blocking) ──────────────────────────────
 # Orca Code 的设计哲学是开箱即用：直接修改 config.json、填入密钥即可运行。
