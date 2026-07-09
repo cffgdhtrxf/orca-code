@@ -386,36 +386,28 @@ def main():
             except Exception:
                 pass
 
-    # If no API key configured, prompt user to enter one before continuing
+    # If no API key configured, print setup guide and exit
     if client is None:
-        console.print("\n[yellow][WARN] No API key detected. Please configure your API key on first use.[/yellow]")
-        console.print("[dim]可直接修改 config.json 中的 api_key 字段，或输入密钥：[/dim]")
-        try:
-            from prompt_toolkit import PromptSession as _PS
-            key = _PS(multiline=True, key_bindings=_kb).prompt("API Key > ")
-            if key and len(key) > 10:
-                CONFIG["api_key"] = key
-                import orca_code.config as _cfg
-                _cfg.CONFIG_JSON.write_text(
-                    json.dumps(CONFIG, indent=2, ensure_ascii=False), encoding="utf-8")
-                console.print("[green]密钥已保存到 config.json。正在初始化...[/green]")
-                # Reload client (must update API_KEY too — it's a copy from import time)
-                _cfg.API_KEY = key
-                _cfg._client = None
-                _new_client = _cfg._get_client()
-                if _new_client is None:
-                    console.print("[red]密钥无效，请检查后重试。[/red]")
-                    return
-                # Update local and module-level client references
-                globals()["client"] = _new_client
-                import orca_code.session_stream as _ss
-                _ss.client = _new_client
-            else:
-                console.print("[red]密钥无效，跳过。可稍后在 config.json 中配置。[/red]")
-                return
-        except ImportError:
-            console.print("[red]请手动编辑 config.json 填入 api_key 后重试。[/red]")
-            return
+        import orca_code.config as _cfg
+        console.print()
+        console.print("[bold yellow]╔══════════════════════════════════════════════════╗[/bold yellow]")
+        console.print("[bold yellow]║        首次启动 — 需要配置 API 密钥            ║[/bold yellow]")
+        console.print("[bold yellow]╚══════════════════════════════════════════════════╝[/bold yellow]")
+        console.print()
+        console.print(f"  已自动创建配置文件: [cyan]{_cfg.CONFIG_JSON}[/cyan]")
+        console.print()
+        console.print("  请编辑 [cyan]config.json[/cyan] 填入以下字段：")
+        console.print()
+        console.print('  [green]api_key[/green]        — LLM API 密钥 (必填，如 DeepSeek sk-...)')
+        console.print('  [green]tavily_api_key[/green]  — 搜索 API 密钥 (可选，搜索功能需要)')
+        console.print()
+        console.print("  也可以设置环境变量：")
+        console.print("  [dim]ORCA_API_KEY=sk-xxx[/dim]")
+        console.print("  [dim]ORCA_TAVILY_KEY=tvly-xxx[/dim]")
+        console.print()
+        console.print(f"  配置完成后重新运行 [cyan]start.bat[/cyan] 即可。")
+        console.print()
+        return
 
     mcp_registry = get_mcp_registry()
     mcp_configs = load_mcp_configs_with_fallback(CONFIG)
