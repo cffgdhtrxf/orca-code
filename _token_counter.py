@@ -30,7 +30,7 @@ def _heuristic(text: str) -> int:
     """Fallback: rough estimation. Chinese ~1.5 chars/token, English ~4 chars/token."""
     if not text:
         return 0
-    cn = len(re.findall(r"[一-鿿　-〿＀-￯]", text))
+    cn = len(re.findall(r"[\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]", text))
     other = len(text) - cn
     return max(1, int(cn / 1.5 + other / 4))
 
@@ -42,7 +42,11 @@ def count(text: str) -> int:
     tok = _load_tokenizer()
     if tok is not None:
         try:
-            return len(tok.encode(text))
+            result = tok.encode(text)
+            # Guard: some tokenizer versions return [] or grossly
+            # under-count for CJK text — fall back to heuristic
+            if result and len(result) >= len(text) / 8:
+                return len(result)
         except Exception:
             pass
     return _heuristic(text)

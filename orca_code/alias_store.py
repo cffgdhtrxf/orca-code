@@ -26,7 +26,7 @@ def load_aliases() -> dict[str, str]:
 def save_aliases(aliases: dict[str, str]):
     p = _path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(aliases, ensure_ascii=False, indent=2))
+    p.write_text(json.dumps(aliases, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def add_alias(name: str, command: str) -> dict[str, str]:
     aliases = load_aliases()

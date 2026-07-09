@@ -169,6 +169,8 @@ class SubAgent:
                 }
 
                 response = client.chat.completions.create(**kwargs)
+                if not response.choices:
+                    break
                 choice = response.choices[0]
                 msg = choice.message
 

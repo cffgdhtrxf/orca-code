@@ -246,10 +246,16 @@ def find_on_screen(description: str) -> str:
     try:
         from rapidocr_onnxruntime import RapidOCR
     except ImportError:
+        import platform as _plat
+        py_ver = _plat.python_version_tuple()
+        if int(py_ver[0]) >= 3 and int(py_ver[1]) >= 14:
+            return ("错误: OCR 不兼容当前 Python 版本\n"
+                    f"  Python {_plat.python_version()}，rapidocr-onnxruntime 仅支持 3.6-3.13\n"
+                    "  请降级 Python 或使用其他 OCR 方案")
         if ensure_pkg("rapidocr-onnxruntime", "rapidocr_onnxruntime"):
             from rapidocr_onnxruntime import RapidOCR
         else:
-            return "错误: 缺少 rapidocr-onnxruntime"
+            return "错误: 缺少 rapidocr-onnxruntime (安装失败)"
     try:
         # Take screenshot
         screen_w, screen_h = pyautogui.size()

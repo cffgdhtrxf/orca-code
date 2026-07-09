@@ -82,11 +82,16 @@ _BOOL_KEYS = (
 # ─── Loading functions ───────────────────────────────────────────────────────
 
 def _load_json(path: Path) -> dict:
-    """Load config from JSON file. Returns empty dict if not found."""
+    """Load config from JSON file. Returns empty dict if not found or malformed."""
     if not path.exists():
         return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"[WARN] 配置文件 {path.name} 格式错误: {e}")
+        print(f"[WARN] 请检查 {path} 的 JSON 语法（括号、逗号、引号）")
+        return {}
 
 
 def _load_txt(path: Path) -> dict:

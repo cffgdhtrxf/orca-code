@@ -96,11 +96,24 @@ def _headroom_compact(messages: list[dict]) -> list[dict] | None:
 
 
 def _legacy_compact(messages: list[dict]) -> list[dict]:
-    system_msg = messages[0]
+    if not messages:
+        return []
+
+    # Find and preserve the system message
+    system_msg = None
+    for m in messages:
+        if m.get("role") == "system":
+            system_msg = m
+            break
+    if system_msg is None and messages:
+        # No system message found — keep first message as anchor
+        system_msg = messages[0] if messages[0].get("role") != "user" else None
     turns: list[list[dict]] = []
     current_turn: list[dict] = []
 
-    for m in messages[1:]:
+    # Iterate non-system messages for turn splitting
+    non_system = [m for m in messages if m.get("role") != "system"]
+    for m in non_system:
         role = m.get("role", "")
         if role == "user" and current_turn:
             turns.append(current_turn)
@@ -117,7 +130,7 @@ def _legacy_compact(messages: list[dict]) -> list[dict]:
     summarize_turns = turns[:-KEEP_ROUNDS]
     summary = _build_summary(summarize_turns)
 
-    compacted: list[dict] = [system_msg]
+    compacted: list[dict] = [system_msg] if system_msg else []
     compacted.append({
         "role": "system",
         "content": f"[会话摘要 — 此前的 {len(summarize_turns)} 轮对话已压缩]\n\n{summary}",

@@ -73,7 +73,7 @@ def git_blame(repo_path: str = None, file: str = None) -> str:
     return _run_git(["blame", file], cwd)
 def _extract_symbol(file_path: str, line: int, column: int) -> str:
     try:
-        lines = Path(file_path).read_text(errors="replace").splitlines()
+        lines = Path(file_path).read_text(encoding="utf-8", errors="replace").splitlines()
         if line < 1 or line > len(lines):
             return ""
         text = lines[line - 1]
@@ -104,7 +104,7 @@ def go_to_definition(file_path: str, line: int = 0, column: int = 0, symbol: str
             rf'^\s*{re.escape(symbol)}\s*:\s*(?:int|str|float|bool|list|dict|set|tuple|Any|Optional|Union)',
         ]
         results = []
-        for i, line_text in enumerate(p.read_text(errors="replace").splitlines(), 1):
+        for i, line_text in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             for pat in patterns:
                 if re.match(pat, line_text):
                     results.append(f"{file_path}:{i}:\n  {line_text.strip()}")
@@ -113,7 +113,7 @@ def go_to_definition(file_path: str, line: int = 0, column: int = 0, symbol: str
             for py_file in sorted(p.parent.glob("*.py")):
                 if py_file.name == p.name:
                     continue
-                for i, l in enumerate(py_file.read_text(errors="replace").splitlines(), 1):
+                for i, l in enumerate(py_file.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     for pat in patterns:
                         if re.match(pat, l):
                             results.append(f"{py_file}:{i}:\n  {l.strip()}")
@@ -130,7 +130,7 @@ def find_references(symbol: str, directory: str = None, file_filter: str = None)
         if not f.is_file() or f.stat().st_size > 1024 * 1024:
             continue
         try:
-            for i, line_text in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            for i, line_text in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if regex.search(line_text):
                     results.append(f"{f.relative_to(base)}:{i}: {line_text.strip()[:200]}")
                     if len(results) >= 50:
@@ -181,7 +181,7 @@ def analyze_image(image_path: str, question: str = None) -> str:
             max_tokens=1000, temperature=0.7,
             timeout=60.0,
         )
-        result = response.choices[0].message.content
+        result = response.choices[0].message.content if response.choices else None
         return result if result else "Error: image analysis returned empty response"
     except openai.BadRequestError:
         return (f"Error: model '{vision_model}' does not support vision. "

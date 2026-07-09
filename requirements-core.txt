@@ -1,0 +1,6 @@
+openai>=1.0.0
+tenacity>=8.0.0
+requests>=2.25.0
+rich>=13.0.0
+charset-normalizer>=3.0.0
+prompt_toolkit>=3.0

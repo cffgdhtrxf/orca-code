@@ -269,6 +269,7 @@ class ShellSession:
             result = subprocess.run(
                 command, shell=True,
                 capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=timeout, cwd=self._cwd,
                 env={**os.environ, **self._env_vars},
             )

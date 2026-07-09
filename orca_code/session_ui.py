@@ -203,7 +203,7 @@ def show_welcome():
             g = int(sg + (eg - sg) * t)
             b = int(sb + (eb - sb) * t)
             sys.stdout.write(f"\033[38;2;{r};{g};{b}m\033[1m{ch}")
-        sys.stdout.write("\033[0m\n")
+        sys.stdout.write("\033[0m\033[0m\033[0m\n")
     sys.stdout.flush()
 
     # ── Version line ──────────────────────────────────────────────────

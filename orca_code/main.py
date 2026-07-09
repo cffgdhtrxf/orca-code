@@ -14,7 +14,9 @@ import openai
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion, PathCompleter
-from prompt_toolkit.history import FileHistory
+from prompt_toolkit.formatted_text import HTML as PtHTML
+from prompt_toolkit.history import FileHistory, InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from rich.markdown import Markdown
 
@@ -180,35 +182,107 @@ def _get_bottom_toolbar():
     if flash_msg:
         return f" {flash_msg} "
     return (
-        " Enter 发送  |  Shift+Enter 换行  |  @ 文件  |  / 命令  |  "
+        " Enter 发送  |  Ctrl+Enter 换行  |  @ 文件  |  / 命令  |  "
         "Ctrl+C 中断  |  Ctrl+D 退出"
     )
+
+
+_session_history: InMemoryHistory | None = None
+
+
+def _get_session_history() -> InMemoryHistory:
+    global _session_history
+    if _session_history is None:
+        _session_history = InMemoryHistory()
+    return _session_history
+
+
+_file_history: FileHistory | None = None
+
+
+def _get_file_history() -> FileHistory:
+    global _file_history
+    if _file_history is None:
+        hist_file = SAVE_DIR / ".input_history"
+        _file_history = FileHistory(str(hist_file))
+    return _file_history
+
+
+_kb = KeyBindings()
+
+
+@_kb.add("enter")
+def _enter_submit(event):
+    """Enter submits the input."""
+    event.current_buffer.validate_and_handle()
+
+
+@_kb.add("c-m")
+def _ctrl_enter_newline(event):
+    """Ctrl+Enter / Ctrl+M inserts a newline for multi-line input.
+
+    On Windows Terminal, Ctrl+Enter sends ESC[27;5;13~ which
+    prompt_toolkit parses as Keys.ControlM ('c-m'). Regular Enter
+    sends 'enter', so the two are distinguishable. This gives us
+    the user-requested Ctrl+Enter = newline behavior.
+
+    On legacy cmd.exe / PowerShell 5.x consoles, Ctrl+Enter may
+    not send a distinct sequence and falls through as 'enter'.
+    Users on those terminals can use \\ (backslash) at end of line
+    for continuation, or Ctrl+J (line feed) to insert a newline.
+    """
+    event.current_buffer.insert_text("\n")
+
+
+@_kb.add("c-j")
+def _ctrl_j_newline(event):
+    """Ctrl+J (Line Feed) inserts a newline — fallback for terminals
+    where Ctrl+Enter is indistinguishable from Enter."""
+    event.current_buffer.insert_text("\n")
 
 
 _prompt_session: PromptSession | None = None
 
 
 def _get_prompt_session() -> PromptSession:
-    """Create or return the shared prompt_toolkit session."""
+    """Create or return the shared prompt_toolkit session.
+
+    Key design: multiline=True with custom key bindings.
+    - Enter: submit (send to AI)
+    - Ctrl+Enter (c-m): insert newline (multi-line input)
+    - Ctrl+J (c-j): insert newline (fallback for legacy terminals)
+    - IME composing Enter: passed to IME naturally — prompt_toolkit's
+      multiline mode does NOT steal Enter from IME the way multiline=False
+      does, because the buffer accepts newlines and the IME candidate
+      window handles Enter for composition before it reaches the key binding.
+
+    This fixes the IME conflict where text disappears when Chinese/Japanese/
+    Korean input methods try to use Enter for candidate selection.
+    """
     global _prompt_session
     if _prompt_session is None:
-        hist_file = SAVE_DIR / ".input_history"
         _prompt_session = PromptSession(
-            history=FileHistory(str(hist_file)),
+            history=_get_file_history(),
             auto_suggest=AutoSuggestFromHistory(),
             completer=OrcaCompleter(),
             style=_ORCA_PROMPT_STYLE,
             bottom_toolbar=_get_bottom_toolbar,
-            complete_while_typing=False,  # Only on Tab
-            reserve_space_for_menu=0,  # No dropdown menu space
-            enable_history_search=False,  # We use ↑↓ for history
-            multiline=False,  # Enter=submit, Shift+Enter=newline
+            key_bindings=_kb,
+            complete_while_typing=False,
+            reserve_space_for_menu=0,
+            enable_history_search=False,
+            multiline=True,
+            vi_mode=False,
+            prompt_continuation="  ",
         )
     return _prompt_session
 
 
 def get_user_input():
-    """Read user input with prompt_toolkit (cursor movement, completions, history).
+    """Read user input with prompt_toolkit.
+
+    Multi-line input via Ctrl+Enter (Windows Terminal) or Ctrl+J (fallback).
+    Enter submits. Backslash at end of line also continues.
 
     Returns:
         User input string, None to exit, "" to skip.
@@ -216,52 +290,27 @@ def get_user_input():
     console.print()
     session = _get_prompt_session()
 
-    # Build prompt text
-    prompt_msg = [("class:prompt", "你 > ")]
-
     try:
-        line = session.prompt(
-            prompt_msg,
+        u_in = session.prompt(
+            [("class:prompt", "你 > ")],
             mouse_support=False,
         )
     except KeyboardInterrupt:
-        # Ctrl+C → interrupt current generation (handled by caller)
         console.print("^C")
         return None
     except EOFError:
-        # Ctrl+D on empty line → exit
         console.print()
         return None
 
-    if line is None:
+    if u_in is None:
         return None
 
-    line = line.rstrip("\r\n")
+    u_in = u_in.rstrip("\r\n")
 
-    if not line.strip():
+    if not u_in.strip():
         return ""
 
-    # Multi-line: if line ends with \\, continue reading
-    if line.rstrip().endswith("\\\\"):
-        lines = [line.rstrip()[:-2]]
-        while True:
-            try:
-                next_line = session.prompt(
-                    [("class:prompt", "  ")],  # Indented continuation
-                    mouse_support=False,
-                )
-                if next_line is None:
-                    break
-                if next_line.rstrip().endswith("\\\\"):
-                    lines.append(next_line.rstrip()[:-2])
-                else:
-                    lines.append(next_line)
-                    break
-            except (KeyboardInterrupt, EOFError):
-                break
-        return "\n".join(lines)
-
-    return line
+    return u_in
 
 
 def _add_history(line: str):
@@ -342,8 +391,8 @@ def main():
         console.print("\n[yellow][WARN] No API key detected. Please configure your API key on first use.[/yellow]")
         console.print("[dim]可直接修改 config.json 中的 api_key 字段，或输入密钥：[/dim]")
         try:
-            from prompt_toolkit import PromptSession
-            key = PromptSession().prompt("API Key > ")
+            from prompt_toolkit import PromptSession as _PS
+            key = _PS(multiline=True, key_bindings=_kb).prompt("API Key > ")
             if key and len(key) > 10:
                 CONFIG["api_key"] = key
                 import orca_code.config as _cfg
@@ -563,12 +612,8 @@ def main():
                     turn_reasoning += (cd.reasoning_tokens or 0)
                 show_usage(usage)
             else:
-                # DeepSeek streaming doesn't include usage — estimate from messages + answer
-                est_in = sum(_msg_tokens(m) for m in session.messages[-1:])  # last user msg
-                est_out = max(1, len(answer) // 2) if answer else 0  # rough: ~2 chars per token
-                session.total_input_tokens += est_in
-                session.total_output_tokens += est_out
-                console.print(f"[dim][T] 输入 ~{est_in:,}t  |  输出 ~{est_out:,}t (估算)[/dim]")
+                # No usage returned by API — do not fabricate estimates
+                console.print("[dim][T] Token 用量: N/A (API 未返回 usage)[/dim]")
 
             if tool_calls_idx:
                 tc_list, tr_list = execute_tool_calls(tool_calls_idx)
@@ -672,10 +717,6 @@ def main():
         turn_out = session.total_output_tokens - getattr(session, '_prev_out', 0)
         session._prev_in = session.total_input_tokens
         session._prev_out = session.total_output_tokens
-        if turn_in <= 0:
-            turn_in = sum(_msg_tokens(m) for m in session.messages[-2:])
-        if turn_out <= 0:
-            turn_out = max(1, len(answer) // 2) if answer else 0
         bal = get_api_balance()
 
         # Per-turn elapsed

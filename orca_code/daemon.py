@@ -50,7 +50,7 @@ def acquire_lock() -> bool:
     _ensure_dirs()
     if LOCK_FILE.exists():
         try:
-            pid = int(LOCK_FILE.read_text().strip())
+            pid = int(LOCK_FILE.read_text(encoding="utf-8").strip())
             # Check if process is still alive
             os.kill(pid, 0)
             return False  # Process exists
@@ -58,7 +58,7 @@ def acquire_lock() -> bool:
             # Stale lock — clean up
             LOCK_FILE.unlink(missing_ok=True)
 
-    LOCK_FILE.write_text(str(os.getpid()))
+    LOCK_FILE.write_text(str(os.getpid()), encoding="utf-8")
     return True
 
 
@@ -66,7 +66,7 @@ def release_lock():
     """Release the daemon lock."""
     try:
         if LOCK_FILE.exists():
-            pid = int(LOCK_FILE.read_text().strip())
+            pid = int(LOCK_FILE.read_text(encoding="utf-8").strip())
             if pid == os.getpid():
                 LOCK_FILE.unlink(missing_ok=True)
     except Exception:
@@ -78,7 +78,7 @@ def get_lock_pid() -> int | None:
     if not LOCK_FILE.exists():
         return None
     try:
-        pid = int(LOCK_FILE.read_text().strip())
+        pid = int(LOCK_FILE.read_text(encoding="utf-8").strip())
         os.kill(pid, 0)
         return pid
     except (ValueError, OSError):

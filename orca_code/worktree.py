@@ -57,6 +57,7 @@ class WorktreeManager:
                 cwd=str(path),
                 capture_output=True,
                 text=True,
+                encoding="utf-8", errors="replace",
                 timeout=5,
             )
             return result.returncode == 0
@@ -70,6 +71,7 @@ class WorktreeManager:
             cwd=str(path),
             capture_output=True,
             text=True,
+            encoding="utf-8", errors="replace",
             timeout=5,
         )
         if result.returncode != 0:
@@ -124,6 +126,7 @@ class WorktreeManager:
                 cwd=str(repo_root),
                 capture_output=True,
                 text=True,
+                encoding="utf-8", errors="replace",
                 timeout=5,
             )
             branch = result.stdout.strip() or "main"
@@ -139,6 +142,7 @@ class WorktreeManager:
                 cwd=str(repo_root),
                 capture_output=True,
                 text=True,
+                encoding="utf-8", errors="replace",
                 timeout=30,
                 check=True,
             )
@@ -150,6 +154,7 @@ class WorktreeManager:
                     cwd=str(repo_root),
                     capture_output=True,
                     text=True,
+                    encoding="utf-8", errors="replace",
                     timeout=30,
                     check=True,
                 )

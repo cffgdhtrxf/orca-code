@@ -20,10 +20,10 @@ def _get_key(password: str | None = None) -> bytes:
         return hashlib.sha256(password.encode()).digest()
     key_file = Path.home() / ".orca" / ".session_key"
     if key_file.exists():
-        return base64.b64decode(key_file.read_text().strip())
+        return base64.b64decode(key_file.read_text(encoding="utf-8").strip())
     key = os.urandom(32)
     key_file.parent.mkdir(parents=True, exist_ok=True)
-    key_file.write_text(base64.b64encode(key).decode())
+    key_file.write_text(base64.b64encode(key).decode(), encoding="utf-8")
     return key
 
 def encrypt_data(data: str, password: str | None = None) -> str:
@@ -46,10 +46,14 @@ def decrypt_data(encrypted: str, password: str | None = None) -> str:
     except ImportError:
         return encrypted
     except Exception:
-        return encrypted  # Decryption failed — return as-is (may be plaintext)
+        # Decryption failed — the data is garbled/corrupted, NOT valid plaintext.
+        # Return empty string to prevent corrupt data from polluting session state.
+        # Caller should treat this as a data loss event.
+        return ""
 
 def is_encryption_enabled() -> bool:
     try:
         from orca_code.config import CONFIG
         return str(CONFIG.get("session_encryption", False)).lower() == "true"
-    except: return False
+    except Exception:
+        return False

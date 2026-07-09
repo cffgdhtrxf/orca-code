@@ -27,7 +27,7 @@ class UsageBudget:
         try:
             p = Path.home() / ".orca" / "budget.json"
             if p.exists():
-                d = json.loads(p.read_text())
+                d = json.loads(p.read_text(encoding="utf-8"))
                 self._tokens_today = d.get("tokens", 0)
                 self._cost_today = d.get("cost", 0.0)
         except Exception as _e:
@@ -38,7 +38,7 @@ class UsageBudget:
         try:
             p = Path.home() / ".orca" / "budget.json"
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(json.dumps({"tokens": self._tokens_today, "cost": round(self._cost_today, 4)}))
+            p.write_text(json.dumps({"tokens": self._tokens_today, "cost": round(self._cost_today, 4)}), encoding="utf-8")
         except Exception as _e:
             import logging
             logging.getLogger("orca_code.usage_budget").warning(

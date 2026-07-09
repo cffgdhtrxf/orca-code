@@ -205,7 +205,8 @@ def check_mode_command(command: str, permission_mode) -> tuple[bool, str]:
             return True, ""
         base_cmd = __import__('pathlib').Path(parts[0]).name.lower()
     except Exception:
-        return True, ""
+        # If we can't parse the command, deny it — safer than allowing
+        return False, f"无法解析命令: {command[:50]}"
 
     # Strip common suffixes
     for suffix in (".exe", ".cmd", ".bat", ".com", ".ps1"):
@@ -529,6 +530,7 @@ def _subprocess_validate_skill(code: str, name: str) -> str | None:
         result = _subprocess.run(
             [_sys.executable, tmp],
             capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
             env={
                 "PATH": _os.environ.get("PATH", ""),
                 "SYSTEMROOT": _os.environ.get("SYSTEMROOT", ""),

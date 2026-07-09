@@ -123,6 +123,8 @@ class StdioMcpTransport:
                 stderr=subprocess.PIPE,
                 env=full_env,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
         except FileNotFoundError:

@@ -144,7 +144,8 @@ class KeychainProvider(SecretProvider):
         target = f"{self.APP_NAME}_{key}"
         result = subprocess.run(
             ["cmdkey", "/generic", target],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=5,
+            encoding="utf-8", errors="replace",
         )
         # cmdkey /generic:<target> lists the credential info
         # We need PowerShell to actually retrieve the password
@@ -154,7 +155,8 @@ class KeychainProvider(SecretProvider):
         )
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", ps_cmd],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="replace",
         )
         password = result.stdout.strip()
         return password if password else None

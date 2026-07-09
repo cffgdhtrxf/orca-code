@@ -187,7 +187,7 @@ def save_last_check(version: str):
     _CACHE_FILE.write_text(json.dumps({
         "last_check": time.time(),
         "last_version": version,
-    }))
+    }), encoding="utf-8")
 
 
 def should_check() -> bool:
@@ -196,7 +196,7 @@ def should_check() -> bool:
         return True
     try:
         import time
-        data = json.loads(_CACHE_FILE.read_text())
+        data = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
         last = data.get("last_check", 0)
         return (time.time() - last) > 86400  # 24 hours
     except Exception:

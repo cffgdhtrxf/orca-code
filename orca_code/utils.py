@@ -31,28 +31,50 @@ def resolve_tool_path(path_str: str, force_temp: bool = False) -> Path:
     p = Path(path_str)
     if p.is_absolute():
         return p
-    # Path with directory prefix → output/ base (strip user's dir, just use filename)
-    # Bare filename → temp/ if scratch-like, else output/
     if force_temp:
-        return SCRIPT_DIR / "temp" / p.name
-    if str(p.parent) != '.':
-        return SCRIPT_DIR / "output" / p.name
+        return SCRIPT_DIR / "temp" / p
+    # Preserve full relative path structure (e.g. "output/report/ch1.md")
+    parts = p.parts
+    if parts and parts[0].lower() in ('output', 'temp'):
+        return SCRIPT_DIR / p
     is_temp = any(kw in p.stem.lower() for kw in ['temp', 'test', 'tmp', '_scratch'])
     if is_temp:
-        return SCRIPT_DIR / "temp" / p.name
-    return SCRIPT_DIR / "output" / p.name
-_FORBIDDEN_DIRS = {"system32", "etc", ".ssh", "Windows", "AppData\\Roaming\\Microsoft"}
-_FORBIDDEN_NAMES = {"config.json", "config.local.json", "requirements.txt",
-                    "start.bat", "start_local.bat", "start.sh"}
+        return SCRIPT_DIR / "temp" / p
+    return SCRIPT_DIR / "output" / p
+_FORBIDDEN_DIRS = {
+    "system32", "etc", ".ssh", "windows", "winsxs",
+    "boot", "sbin", "usr", "bin", "lib", "proc", "sys", "dev",
+    "programdata", "program files", "program files (x86)",
+}
+_FORBIDDEN_NAMES = {
+    "config.json", "config.local.json", "requirements.txt",
+    "start.bat", "start_local.bat", "start.sh",
+    ".env", "id_rsa", "id_ed25519", ".gitconfig", ".npmrc",
+}
 _FORBIDDEN_SUFFIXES = set()
 _FORBIDDEN_DIRS_INTERNAL = set()
+
+
 def _validate_write_path(path: str) -> tuple:
     p = resolve_tool_path(path).resolve()
-    # Allow writing anywhere EXCEPT system-protected directories.
-    # The old sandbox restricted to SCRIPT_DIR, which blocked legitimate
-    # use cases like saving reports to the user's Desktop.
-    if any(part.lower() in _FORBIDDEN_DIRS for part in p.parts):
-        return p, f"错误: 禁止写入敏感目录 - {path}"
+
+    # Block UNC paths (\\server\share\...) — potential data exfiltration
+    if str(p).startswith("\\\\"):
+        return p, f"错误: 禁止写入UNC路径 - {path}"
+
+    # Block path traversal that escapes the project directory
+    # Allow absolute paths on the same drive as the project,
+    # but block paths that are clearly outside (system dirs, other users)
+    script_root = SCRIPT_DIR.resolve()
+    try:
+        p.relative_to(script_root)
+    except ValueError:
+        # Path is outside project dir — check if it's a system/sensitive location
+        if any(part.lower() in _FORBIDDEN_DIRS for part in p.parts):
+            return p, f"错误: 禁止写入敏感目录 - {path}"
+        # Allow writing to user directories (Desktop, Documents, etc.)
+        # but log a warning path
+
     # Block writing to config files and source code
     if p.name.lower() in _FORBIDDEN_NAMES:
         return p, f"错误: 禁止修改项目配置文件 - {p.name}"
@@ -62,7 +84,11 @@ def _validate_write_path(path: str) -> tuple:
         return p, f"错误: 禁止写入受保护目录 - {path}"
     return p, None
 def _estimate_tokens(text: str) -> int:
-    """Count tokens. DeepSeek models use official tokenizer; others use heuristic."""
+    """Count tokens. DeepSeek models use official tokenizer; others use heuristic.
+
+    The heuristic is a rough approximation (±50%) for non-DeepSeek models.
+    When available, actual API usage data should be preferred over this estimate.
+    """
     if not text:
         return 0
     if IS_DEEPSEEK:
@@ -71,8 +97,10 @@ def _estimate_tokens(text: str) -> int:
             return count(text)
         except ImportError:
             pass  # fall through to heuristic
-    # Heuristic: Chinese ~1.5 chars/token, English ~4 chars/token
-    cn = len(re.findall(r"[一-鿿]", text))
+    # Heuristic: CJK ~1.5 chars/token, English ~4 chars/token
+    # CJK range covers: CJK Unified Ideographs, Extension A,
+    # Hiragana, Katakana, Hangul Syllables, CJK Compatibility
+    cn = len(re.findall(r"[\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", text))
     other = len(text) - cn
     return max(1, int(cn / 1.5 + other / 4))
 def cleanup_temp_files(generated_files: set = None) -> str:

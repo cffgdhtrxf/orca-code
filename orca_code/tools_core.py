@@ -431,12 +431,17 @@ def _write_ps1_temp(command: str) -> str | None:
     """Write a PowerShell command to a temp .ps1 file to avoid quoting issues.
 
     Returns path to the .ps1 file, or None if writing fails.
+
+    Writes UTF-8 with BOM — PowerShell 5.x (Windows default) uses the
+    system code page (GBK on Chinese Windows) to read .ps1 files. A
+    UTF-8 BOM (\xef\xbb\xbf) forces PowerShell to use UTF-8 decoding,
+    preventing Chinese character corruption.
     """
     try:
         tmp_dir = Path(tempfile.gettempdir()) / "orca_ps1"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         tmp = tmp_dir / f"cmd_{uuid.uuid4().hex[:8]}.ps1"
-        tmp.write_text(command, encoding="utf-8")
+        tmp.write_bytes(b'\xef\xbb\xbf' + command.encode('utf-8'))
         return str(tmp)
     except Exception:
         return None

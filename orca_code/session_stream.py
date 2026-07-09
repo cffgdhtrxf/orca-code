@@ -261,75 +261,75 @@ def process_stream(stream):
     t_answer_start = None
     answer_status = None
 
-    for chunk in stream:
-        if not chunk.choices:
-            if hasattr(chunk, "usage") and chunk.usage:
-                usage = chunk.usage
-            continue
+    try:
+        for chunk in stream:
+            if not chunk.choices:
+                if hasattr(chunk, "usage") and chunk.usage:
+                    usage = chunk.usage
+                continue
 
-        delta = chunk.choices[0].delta
+            delta = chunk.choices[0].delta
 
-        if hasattr(delta, "reasoning_content") and delta.reasoning_content:
-            # Sanitize surrogates at the source
-            safe_content = _sanitize_surrogates(delta.reasoning_content)
-            if not thinking_started:
-                console.print()
-                # [F18] Terminal-aware thinking display.
-                # On legacy Windows terminals (cmd.exe, old PowerShell), ANSI
-                # SGR codes for italic [3m and dim [2m are NOT supported.
-                # Emitting unsupported codes corrupts the terminal's ANSI state
-                # machine, causing the subsequent reset [0m to lose sync and
-                # leak the thinking style into Rich's answer rendering.
-                # We detect terminal capabilities and emit only safe codes.
-                if _can_use_italic():
-                    # Full styling: dim + bright-black + italic
-                    _write_ansi("\033[2;90;3m💭 ")
-                else:
-                    # Safe fallback: bright-black only (no dim, no italic)
-                    _write_ansi("\033[90m💭 ")
-                thinking_started = True
-            display = _sanitize_ansi(safe_content.replace("\n", "\n  "))
-            _write_ansi(display)
-            reasoning_full += safe_content
+            if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                # Sanitize surrogates at the source
+                safe_content = _sanitize_surrogates(delta.reasoning_content)
+                if not thinking_started:
+                    console.print()
+                    # [F18] Terminal-aware thinking display.
+                    if _can_use_italic():
+                        _write_ansi("\033[2;90;3m💭 ")
+                    else:
+                        _write_ansi("\033[90m💭 ")
+                    thinking_started = True
+                display = _sanitize_ansi(safe_content.replace("\n", "\n  "))
+                _write_ansi(display)
+                reasoning_full += safe_content
 
-        if delta.tool_calls:
-            for tc in delta.tool_calls:
-                idx = tc.index
-                if idx not in tool_calls_by_index:
-                    tool_calls_by_index[idx] = {
-                        "id": "", "function_name": "", "function_arguments": ""
-                    }
-                entry = tool_calls_by_index[idx]
-                if tc.id:
-                    entry["id"] = tc.id
-                if tc.function and tc.function.name:
-                    entry["function_name"] = tc.function.name
-                if tc.function and tc.function.arguments:
-                    entry["function_arguments"] += tc.function.arguments
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_by_index:
+                        tool_calls_by_index[idx] = {
+                            "id": "", "function_name": "", "function_arguments": ""
+                        }
+                    entry = tool_calls_by_index[idx]
+                    if tc.id:
+                        entry["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        entry["function_name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        entry["function_arguments"] += tc.function.arguments
 
-        if delta.content:
-            if t_answer_start is None:
-                t_answer_start = time.time()
-                # [F18] Reset ANSI style BEFORE Rich console operations.
-                # On legacy Windows terminals, unsupported ANSI codes (italic,
-                # dim) corrupt the ANSI state machine. We now emit only safe
-                # codes per _can_use_italic(), but the reset is still needed
-                # to clear any active styling before Rich takes over.
-                if thinking_started:
-                    _write_ansi("\033[0m\n")
-                answer_status = console.status(
-                    "[dim]生成中... 0 字[/dim]",
-                    spinner="dots", spinner_style="bright_black",
-                )
-                answer_status.start()
-            # Sanitize surrogates at the source
-            safe_content = _sanitize_surrogates(delta.content)
-            answer_full += safe_content
-            elapsed = time.time() - t_answer_start
-            label = f"[dim]生成中... {len(answer_full)} 字"
-            if elapsed >= 1:
-                label += f" · {elapsed:.0f}s"
-            answer_status.update(label + "[/dim]")
+            if delta.content:
+                if t_answer_start is None:
+                    t_answer_start = time.time()
+                    # [F18] Reset ANSI style BEFORE Rich console operations.
+                    if thinking_started:
+                        _write_ansi("\033[0m\033[0m\033[0m\n")
+                    answer_status = console.status(
+                        "[dim]生成中... 0 字[/dim]",
+                        spinner="dots", spinner_style="bright_black",
+                    )
+                    answer_status.start()
+                # Sanitize surrogates at the source
+                safe_content = _sanitize_surrogates(delta.content)
+                answer_full += safe_content
+                elapsed = time.time() - t_answer_start
+                label = f"[dim]生成中... {len(answer_full)} 字"
+                if elapsed >= 1:
+                    label += f" · {elapsed:.0f}s"
+                answer_status.update(label + "[/dim]")
+
+    except Exception as stream_err:
+        # Stream broke mid-way — clean up terminal state before re-raising
+        if thinking_started:
+            _write_ansi("\033[0m\033[0m\033[0m\n")
+        if answer_status is not None:
+            try:
+                answer_status.stop()
+            except Exception:
+                pass
+        raise
 
     if reasoning_full:
         from orca_code.session import session
@@ -338,7 +338,7 @@ def process_stream(stream):
     # [F18] Safety-net ANSI reset — fires when thinking was displayed but
     # no answer content followed (e.g. tool-only responses).
     if thinking_started and answer_status is None:
-        _write_ansi("\033[0m\n")
+        _write_ansi("\033[0m\033[0m\033[0m\n")
     if answer_status is not None:
         answer_status.stop()
 
@@ -386,11 +386,12 @@ def execute_tool_calls(tool_calls_by_index):
             result = "(interrupted)"
             elapsed = (time.time() - t0) * 1000
             flash_status("工具执行已中断", "yellow")
+        call_id = tc["id"] or f"call_{idx}"
         session.tool_calls += 1
         return (
-            [{"id": tc["id"], "type": "function",
+            [{"id": call_id, "type": "function",
               "function": {"name": fn_name, "arguments": tc["function_arguments"]}}],
-            [{"role": "tool", "tool_call_id": tc["id"] or f"call_{idx}", "content": result}]
+            [{"role": "tool", "tool_call_id": call_id, "content": result}]
         )
 
     items_by_idx = {idx: (fn, args) for idx, tc, fn, args in items}
@@ -417,12 +418,14 @@ def execute_tool_calls(tool_calls_by_index):
         result = results_map.get(idx, "错误: 未获取到结果")
         show_tool_result(result, fn_name)
         session.tool_calls += 1
+        # Ensure tool_call_id matches between tool_calls[].id and tool_results[].tool_call_id
+        call_id = tc["id"] or f"call_{idx}"
         tool_calls.append({
-            "id": tc["id"], "type": "function",
+            "id": call_id, "type": "function",
             "function": {"name": fn_name, "arguments": tc["function_arguments"]}
         })
         tool_results.append({
-            "role": "tool", "tool_call_id": tc["id"] or f"call_{idx}", "content": result
+            "role": "tool", "tool_call_id": call_id, "content": result
         })
     show_tool_done(elapsed, parallel=True)
     return tool_calls, tool_results

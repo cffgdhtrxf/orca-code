@@ -171,6 +171,8 @@ def _run_worker_in_process(spec_dict: dict) -> dict:
             }
 
             response = client.chat.completions.create(**kwargs)
+            if not response.choices:
+                break
             choice = response.choices[0]
             msg = choice.message
 

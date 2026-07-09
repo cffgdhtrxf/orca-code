@@ -220,7 +220,7 @@ def tavily_extract(urls: str | list[str], extract_depth: str = "basic") -> str:
     failed = r.get("failed_results", [])
     for f_item in failed:
         parts.append(f"## {f_item.get('url', '')}\n错误: {f_item.get('error', '提取失败')}")
-    return "\n\n---\n\n".join(parts) if parts else "未能提取到内容"
+    return "\n---\n".join(parts) if parts else "未能提取到内容"
 
 
 def tavily_crawl(url: str, instructions: str = "", max_depth: int = 2, max_pages: int = 10) -> str:
@@ -242,7 +242,7 @@ def tavily_crawl(url: str, instructions: str = "", max_depth: int = 2, max_pages
             parts.append(f"### {item.get('url', '')}\n\n{cleaned}")
     if not parts:
         return f"Crawl 完成，但未提取到内容。共处理 {len(r.get('results', []))} 页。"
-    return f"已爬取 {len(parts)} 页:\n\n" + "\n\n---\n\n".join(parts)
+    return f"已爬取 {len(parts)} 页:\n" + "\n---\n".join(parts)
 
 
 def tavily_map(url: str) -> str:
@@ -286,7 +286,7 @@ def _ddg_fallback(query: str) -> str:
             results.append(f"{len(results) + 1}. {t}\n    {u}\n    {s}")
         if len(results) >= 10:
             break
-    return "\n\n".join(results) if results else f"未找到与 '{query}' 相关的结果"
+    return "\n".join(results) if results else f"未找到与 '{query}' 相关的结果"
 def web_search(query: str, days: int = 0, topic: str = "general",
                max_results: int = 5, search_depth: str = "advanced",
                include_domains: str = "", exclude_domains: str = "") -> str:
@@ -308,13 +308,13 @@ def web_search(query: str, days: int = 0, topic: str = "general",
         if not (len(tavily_results) == 1 and "error" in tavily_results[0]):
             lines = []
             for i, r in enumerate(tavily_results):
-                line = f"{i + 1}. {r['title']}"
+                parts = [f"{i + 1}. {r['title']}"]
                 if r['href']:
-                    line += f"\n    {r['href']}"
+                    parts.append(r['href'])
                 if r['body']:
-                    line += f"\n    {r['body']}"
-                lines.append(line)
-            return "\n\n".join(lines) if lines else f"未找到与 '{query}' 相关的结果"
+                    parts.append(r['body'][:200])
+                lines.append(" | ".join(parts))
+            return "\n".join(lines) if lines else f"未找到与 '{query}' 相关的结果"
         console.print(f"  [dim]Tavily 不可用: {tavily_results[0]['error']}，降级到 DDG[/dim]")
     if _time.time() > _deadline:
         return "错误: 搜索超时（总时间超过 20s）"

@@ -128,8 +128,7 @@ def take_screenshot(window_title: str = None, save_path: str = None) -> str:
 
     # Force all screenshots into output/ — don't let model scatter files across Desktop
     if save_path:
-        p = Path(save_path)
-        save_to = OUTPUT_DIR / p.name  # always just the filename, ignore any dir prefix
+        save_to = resolve_tool_path(save_path)
     else:
         save_to = OUTPUT_DIR / f"screenshot_{int(time.time())}.png"
     save_to.parent.mkdir(parents=True, exist_ok=True)
@@ -224,13 +223,23 @@ _ocr_engine = None
 def ocr_image(path: str) -> str:
     global _ocr_engine
     try:
-        if _ocr_engine is None:
+        if _ocr_engine is None or _ocr_engine is False:
+            if _ocr_engine is False:
+                return "OCR 不可用: rapidocr-onnxruntime 安装失败，可能不兼容当前 Python 版本"
             with _ocr_lock:
                 if _ocr_engine is None:
-                    err = _ensure_pkg("rapidocr-onnxruntime", "rapidocr_onnxruntime", "rapidocr-onnxruntime")
-                    if err:
-                        return err
-                    from rapidocr_onnxruntime import RapidOCR
+                    try:
+                        from rapidocr_onnxruntime import RapidOCR
+                    except ImportError:
+                        ok = ensure_pkg("rapidocr-onnxruntime", "rapidocr_onnxruntime")
+                        if not ok:
+                            import platform as _plat
+                            py_ver = _plat.python_version()
+                            _ocr_engine = False
+                            return (f"OCR 不可用: rapidocr-onnxruntime 安装失败\n"
+                                    f"  当前 Python {py_ver}，该库可能不兼容此版本\n"
+                                    f"  支持 Python 3.6-3.13，如版本不符请降级 Python")
+                        from rapidocr_onnxruntime import RapidOCR
                     _ocr_engine = RapidOCR()
         p = Path(path)
         if not p.exists():

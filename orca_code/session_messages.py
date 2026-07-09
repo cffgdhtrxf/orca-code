@@ -126,7 +126,7 @@ def _llm_compress_blocks(blocks: list, llm_client=None, llm_model: str = "") -> 
                           {"role": "user", "content": prompt}],
                 max_tokens=300, temperature=0.3,
             )
-            summary = (resp.choices[0].message.content or "").strip()[:400]
+            summary = (resp.choices[0].message.content or "").strip()[:400] if resp.choices else ""
             if summary:
                 return [
                     {"role": "user", "content": f"[Previous conversation summary]: {summary}"},

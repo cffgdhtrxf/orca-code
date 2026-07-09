@@ -124,6 +124,8 @@ class LspClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=workspace_path,
+                encoding="utf-8",
+                errors="replace",
             )
         except Exception:
             return False
